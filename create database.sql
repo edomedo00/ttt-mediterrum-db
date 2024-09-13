@@ -11,22 +11,19 @@ CREATE TABLE usuarios (
     nivel ENUM('oro', 'plata', 'bronce') NOT NULL, 
     distribuidor INT, 
     promotor INT,
-    carrito_actual INT,
 	CONSTRAINT u_unique_email UNIQUE (email),               
     CONSTRAINT u_unique_telefono UNIQUE (telefono)
 );
 
+ALTER TABLE usuarios
+ADD CONSTRAINT fk_promotor_de_usuario FOREIGN KEY (promotor) REFERENCES usuarios(id),
+ADD CONSTRAINT fk_distribuidor_de_usuario FOREIGN KEY (distribuidor) REFERENCES usuarios(id);
+
 CREATE TABLE carrito (
     id INT PRIMARY KEY AUTO_INCREMENT,
     usuario INT,
-    fecha_creacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT fk_carrito_usuario FOREIGN KEY (usuario) REFERENCES usuarios(id)
 );
-
-ALTER TABLE usuarios
-ADD CONSTRAINT fk_promotor_de_usuario FOREIGN KEY (promotor) REFERENCES usuarios(id),
-ADD CONSTRAINT fk_distribuidor_de_usuario FOREIGN KEY (distribuidor) REFERENCES usuarios(id),
-ADD CONSTRAINT fk_usuario_carrito_actual FOREIGN KEY usuario(carrito_actual) REFERENCES carrito(id);
 
 CREATE TABLE historial (
 	usuario INT NOT NULL, 
@@ -62,14 +59,13 @@ CREATE TABLE carrito_producto (
 CREATE TABLE ventas (
 	id INT AUTO_INCREMENT PRIMARY KEY, 
     usuario INT NOT NULL, 
-    carrito INT NOT NULL, 
+    carrito JSON, 
 	costo_total FLOAT,
     fecha_venta DATE NOT NULL, 
     fecha_entrega DATE NOT NULL, 
     lugar_entrega VARCHAR(100) NOT NULL, 
     puntos_venta INT NOT NULL,
-    CONSTRAINT fk_usuario_ventas FOREIGN KEY (usuario) REFERENCES usuarios(id),
-	CONSTRAINT fk_carrito_ventas FOREIGN KEY (carrito) REFERENCES carrito(id)
+    CONSTRAINT fk_usuario_ventas FOREIGN KEY (usuario) REFERENCES usuarios(id)
 );
 
 CREATE TABLE clientes (

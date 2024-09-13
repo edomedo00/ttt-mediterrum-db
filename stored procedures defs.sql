@@ -13,13 +13,6 @@ CREATE PROCEDURE insertar_usuario (
 )
 BEGIN 
     DECLARE nuevo_usuario_id INT;
-    DECLARE nuevo_carrito_id INT;
-
-    DECLARE CONTINUE HANDLER FOR SQLEXCEPTION
-    BEGIN
-        ROLLBACK;
-        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Error: Se ha producido un error en la transacción.';
-    END;
 
     START TRANSACTION;
 
@@ -49,12 +42,6 @@ BEGIN
     INSERT INTO carrito (usuario) 
     VALUES (nuevo_usuario_id);
 
-    SET nuevo_carrito_id = LAST_INSERT_ID();
-
-    UPDATE usuarios
-    SET carrito_actual = nuevo_carrito_id
-    WHERE id = nuevo_usuario_id;
-
     COMMIT;
 END $$
 DELIMITER ;
@@ -67,14 +54,8 @@ CREATE PROCEDURE eliminar_usuario (
 BEGIN
     DECLARE carrito_id INT;
 
-    DECLARE CONTINUE HANDLER FOR SQLEXCEPTION
-    BEGIN
-        ROLLBACK;
-        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Error: Se ha producido un error en la transacción.';
-    END;
-
     START TRANSACTION;
-
+    
     UPDATE usuarios
     SET distribuidor = NULL
     WHERE distribuidor = usuario_id;
@@ -83,15 +64,11 @@ BEGIN
     SET promotor = NULL
     WHERE promotor = usuario_id;
 
-    SELECT carrito_actual INTO carrito_id
-    FROM usuarios
-    WHERE id = usuario_id;
+    SELECT id INTO carrito_id
+    FROM carrito
+    WHERE usuario = usuario_id;
 
     IF carrito_id IS NOT NULL THEN
-        UPDATE usuarios
-        SET carrito_actual = NULL
-        WHERE id = usuario_id;
-
         DELETE FROM carrito WHERE id = carrito_id;
     END IF;
 
@@ -103,18 +80,13 @@ DELIMITER ;
 
 -- SP para modificar los datos personales de un usuario
 DELIMITER $$
-CREATE PROCEDURE modificar_datos_usuario (
+CREATE PROCEDURE modificar_usuario_datos (
     IN usuario_id INT,
     IN nuevo_nombre VARCHAR(100),
     IN nuevo_email VARCHAR(50),
     IN nuevo_telefono VARCHAR(15)
 )
 BEGIN
-    DECLARE CONTINUE HANDLER FOR SQLEXCEPTION
-    BEGIN
-        ROLLBACK;
-        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Error: Se ha producido un error en la transacción.';
-    END;
 
     START TRANSACTION;
 
@@ -130,16 +102,11 @@ DELIMITER ;
 
 -- SP para modificar el rol de un usuario
 DELIMITER $$
-CREATE PROCEDURE modificar_rol_usuario (
+CREATE PROCEDURE modificar_usuario_rol (
     IN usuario_id INT,
     IN nuevo_rol ENUM('vendedor', 'promotor', 'distribuidor')
 )
 BEGIN
-    DECLARE CONTINUE HANDLER FOR SQLEXCEPTION
-    BEGIN
-        ROLLBACK;
-        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Error: Se ha producido un error en la transacción.';
-    END;
 
     START TRANSACTION;
 
@@ -165,7 +132,7 @@ DELIMITER ;
 -- 2. Insertar la venta en la tabla ventas
 -- 3. Crear un nuevo carrito y asignarselo al usuario
 DELIMITER $$
-CREATE PROCEDURE realizar_compra (
+CREATE PROCEDURE realizar_venta (
     IN usuario_id INT,
     IN fecha_entrega DATE,
     IN lugar_entrega VARCHAR(100)
@@ -174,37 +141,38 @@ BEGIN
     DECLARE precio_total FLOAT DEFAULT 0;
     DECLARE puntos_total_venta INT DEFAULT 0;
     DECLARE nuevo_carrito_id INT;
-    DECLARE carrito_actual_id INT;
+    DECLARE carrito_compra_id INT;
     DECLARE cant_disponible INT;
     DECLARE cant_comprada INT;
     DECLARE prod_sku VARCHAR(20);
     DECLARE finished INT DEFAULT 0;
     DECLARE err_message VARCHAR(30);
+    DECLARE carrito_json JSON;
     
     -- cursor para iterar al revisar y actualizar inventario
 	DECLARE cur CURSOR FOR
 	SELECT cp.producto, cp.cantidad
     FROM carrito_producto cp
-    WHERE cp.carrito = carrito_actual_id;
+    WHERE cp.carrito = carrito_compra_id;
 
 	DECLARE CONTINUE HANDLER FOR NOT FOUND SET finished = 1;
 
     -- start transaction
     START TRANSACTION;
 
-    SELECT carrito_actual INTO carrito_actual_id FROM usuarios WHERE id = usuario_id;
+    SELECT id INTO carrito_compra_id FROM carrito WHERE usuario = usuario_id;
 
     SELECT SUM(
         cp.cantidad * (p.costo_total - (p.costo_total * IFNULL(p.descuento, 0) * 0.01))
     ) INTO precio_total
     FROM carrito_producto cp
     JOIN productos p ON cp.producto = p.sku
-    WHERE cp.carrito = carrito_actual_id;
+    WHERE cp.carrito = carrito_compra_id;
 
     SELECT SUM( cp.cantidad * p.puntos_producto ) INTO puntos_total_venta
     FROM carrito_producto cp
     JOIN productos p ON cp.producto = p.sku
-    WHERE cp.carrito = carrito_actual_id;
+    WHERE cp.carrito = carrito_compra_id;
 
     IF precio_total > 0 THEN
 
@@ -231,6 +199,22 @@ BEGIN
 
         CLOSE cur;
 
+	    -- necesito ayuda con lo siguiente
+		-- se tiene que generar el carrito como JSON antes de insertar, el json debe tener sku, nombre, cantidad, descuento y costo individual y total del producto(s)
+		SELECT JSON_ARRAYAGG(
+            JSON_OBJECT(
+                'sku', p.sku,
+                'nombre_producto', p.nombre_producto,
+                'cantidad', cp.cantidad,
+                'descuento', IFNULL(p.descuento, 0),
+                'costo_individual', p.costo_total,
+                'costo_total', cp.cantidad * (p.costo_total - (p.costo_total * IFNULL(p.descuento, 0) * 0.01))
+            )
+        ) INTO carrito_json
+        FROM carrito_producto cp
+        JOIN productos p ON cp.producto = p.sku
+        WHERE cp.carrito = carrito_compra_id;
+        
         INSERT INTO ventas (
             usuario, 
             carrito, 
@@ -242,20 +226,16 @@ BEGIN
         )
         VALUES (
             usuario_id, 
-            carrito_actual_id, 
+            carrito_json, 
             precio_total, 
             CURDATE(), 
             fecha_entrega, 
             lugar_entrega, 
             puntos_total_venta
         );
-
-        INSERT INTO carrito (usuario) VALUES (usuario_id);
-        SET nuevo_carrito_id = LAST_INSERT_ID();
-
-        UPDATE usuarios 
-        SET carrito_actual = nuevo_carrito_id
-        WHERE id = usuario_id;
+        
+  		-- eliminar todos los productos del carrito del usuario
+        DELETE FROM carrito_producto WHERE carrito = carrito_compra_id;
 
         UPDATE usuarios 
         SET puntos_total = puntos_total + puntos_total_venta
@@ -291,7 +271,7 @@ DELIMITER ;
 
 -- SP para obtener la red de un usuario_id, usuarios hacia arriba y hacia abajo 
 DELIMITER $$
-CREATE PROCEDURE obtener_red_usuario (IN usuario_id INT)
+CREATE PROCEDURE obtener_usuario_red (IN usuario_id INT)
 BEGIN 
 	SELECT 
 		d.id AS DistribuidorID,
@@ -361,11 +341,6 @@ CREATE PROCEDURE insertar_cliente (
     IN c_intereses VARCHAR(30)
 )
 BEGIN
-    DECLARE CONTINUE HANDLER FOR SQLEXCEPTION
-    BEGIN
-        ROLLBACK;
-        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Error: Se ha producido un error en la transacción.';
-    END;
 
     START TRANSACTION;
 
@@ -390,19 +365,10 @@ CREATE PROCEDURE insertar_producto (
     IN p_cantidad_inventario INT
 )
 BEGIN
-    DECLARE CONTINUE HANDLER FOR SQLEXCEPTION
-    BEGIN
-        ROLLBACK;
-        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Error: Se ha producido un error en la transacción.';
-    END;
 
     START TRANSACTION;
 
-    IF EXISTS (SELECT 1 FROM productos WHERE sku = p_sku) THEN
-        -- el codigo 45000 es una excepcion general o definida por el usuario.
-        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'El SKU ya existe en la base de datos.';
-    ELSE
-        INSERT INTO productos (
+        INSERT INTO productos (	
             sku, 
             nombre_producto,
             costo_total,
@@ -423,7 +389,6 @@ BEGIN
             p_puntos_producto,
             p_cantidad_inventario
         );
-    END IF;
 
     COMMIT;
 END $$
@@ -431,7 +396,6 @@ DELIMITER ;
 
 -- SP insertar producto en carrito_producto (usuario_id, producto_SKU)
 DELIMITER $$
-
 CREATE PROCEDURE insertar_producto_carrito (
     IN usuario_id INT,
     IN producto_sku VARCHAR(20),
@@ -441,24 +405,17 @@ BEGIN
     DECLARE carrito_id INT;
     DECLARE cant_disponible INT;
 
-    DECLARE CONTINUE HANDLER FOR SQLEXCEPTION
-    BEGIN
-        ROLLBACK;
-        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Error: Se ha producido un error en la transacción.';
-    END;
-
     START TRANSACTION;
 
-    SELECT carrito_actual INTO carrito_id
-    FROM usuarios
-    WHERE id = usuario_id;
+    SELECT id INTO carrito_id
+    FROM carrito
+    WHERE usuario = usuario_id;
 
     SELECT cantidad_inventario INTO cant_disponible
     FROM productos
     WHERE sku = producto_sku;
 
     IF cant_disponible < p_cantidad THEN
-		ROLLBACK;
         SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'No hay suficiente inventario.';
     ELSE
         INSERT INTO carrito_producto (carrito, producto, cantidad)
@@ -469,7 +426,7 @@ BEGIN
 
     COMMIT;
 END $$
-DELIMITER ;
+DELIMITER;
 
 -- SP para obtener los productos en el carrito de un usuario
 DELIMITER $$
@@ -479,9 +436,9 @@ CREATE PROCEDURE obtener_productos_en_carrito_usuario (
 BEGIN
     DECLARE carrito_id INT;
 
-    SELECT carrito_actual INTO carrito_id
-    FROM usuarios
-    WHERE id = usuario_id;
+    SELECT id INTO carrito_id
+    FROM carrito
+    WHERE usuario = usuario_id;
 
     SELECT
         p.sku AS producto_sku,
@@ -500,7 +457,7 @@ DELIMITER ;
 
 -- SP para obtener todos los productos en inventario
 DELIMITER $$
-CREATE PROCEDURE obtener_todos_productos()
+CREATE PROCEDURE obtener_productos_todos()
 BEGIN
     SELECT
         sku AS producto_sku,
@@ -542,7 +499,7 @@ DELIMITER ;
 
 -- SP para obtener el inventario de un producto
 DELIMITER $$
-CREATE PROCEDURE obtener_inventario_producto (
+CREATE PROCEDURE obtener_producto_inventario (
     IN producto_sku VARCHAR(20)
 )
 BEGIN
@@ -712,19 +669,53 @@ BEGIN
 END $$
 DELIMITER ;
 
+-- SP para obtener todas las ventas
+DELIMITER $$
+CREATE PROCEDURE obtener_ventas_todas()
+BEGIN
+    SELECT * FROM ventas;
+END$$
+DELIMITER ;
+
 -- SP para obtener las ventas de una fecha
 DELIMITER $$
 CREATE PROCEDURE obtener_ventas_fecha (
     IN p_fecha_venta DATE
 )
 BEGIN
-    SELECT v.id, u.nombre AS vendedor, v.costo_total, v.fecha_venta, v.lugar_entrega, 
-           GROUP_CONCAT(CONCAT(p.sku, ': ', p.nombre_producto, ' (', cp.cantidad, ')') SEPARATOR ', ') AS productos_carrito
+    SELECT v.id, u.nombre AS vendedor, v.costo_total, v.fecha_venta, v.lugar_entrega, v.carrito
     FROM ventas v
     JOIN usuarios u ON v.usuario = u.id
-    JOIN carrito_producto cp ON v.carrito = cp.carrito
-    JOIN productos p ON cp.producto = p.sku
     WHERE v.fecha_venta = p_fecha_venta
+    GROUP BY v.id;
+END $$
+DELIMITER ;
+
+-- SP para obtener las ventas de un mes
+DELIMITER $$
+CREATE PROCEDURE obtener_ventas_mes (
+    IN p_anio INT,
+    IN p_mes INT
+)
+BEGIN
+    SELECT v.id, u.nombre AS vendedor, v.costo_total, v.fecha_venta, v.lugar_entrega, v.carrito
+    FROM ventas v
+    JOIN usuarios u ON v.usuario = u.id
+    WHERE YEAR(v.fecha_venta) = p_anio AND MONTH(v.fecha_venta) = p_mes
+    GROUP BY v.id;
+END $$
+DELIMITER ;
+
+-- SP para obtener las ventas de un año
+DELIMITER $$
+CREATE PROCEDURE obtener_ventas_anio (
+    IN p_anio INT
+)
+BEGIN
+    SELECT v.id, u.nombre AS vendedor, v.costo_total, v.fecha_venta, v.lugar_entrega, v.carrito
+    FROM ventas v
+    JOIN usuarios u ON v.usuario = u.id
+    WHERE YEAR(v.fecha_venta) = p_anio
     GROUP BY v.id;
 END $$
 DELIMITER ;
@@ -732,16 +723,13 @@ DELIMITER ;
 -- SP para obtener las ventas que ha realizado un usuario
 DELIMITER $$
 CREATE PROCEDURE obtener_ventas_usuario (
-    IN p_nombre_vendedor VARCHAR(100)
+    IN p_vendedor_id VARCHAR(100)
 )
 BEGIN
-    SELECT v.id, u.nombre AS vendedor, v.costo_total, v.fecha_venta, v.lugar_entrega, 
-           GROUP_CONCAT(CONCAT(p.sku, ': ', p.nombre_producto, ' (', cp.cantidad, ')') SEPARATOR ', ') AS productos_carrito
+    SELECT v.id, u.nombre AS vendedor, v.costo_total, v.fecha_venta, v.lugar_entrega, v.carrito
     FROM ventas v
     JOIN usuarios u ON v.usuario = u.id
-    JOIN carrito_producto cp ON v.carrito = cp.carrito
-    JOIN productos p ON cp.producto = p.sku
-    WHERE u.nombre = p_nombre_vendedor
+    WHERE v.usuario = p_vendedor_id
     GROUP BY v.id;
 END $$
 DELIMITER ;
@@ -749,16 +737,13 @@ DELIMITER ;
 -- SP para obtener una venta por ID (venta)
 DELIMITER $$
 CREATE PROCEDURE obtener_venta_id (
-    IN p_id INT
+    IN v_id INT
 )
 BEGIN
-    SELECT v.id, u.nombre AS vendedor, v.costo_total, v.fecha_venta, v.lugar_entrega, 
-           GROUP_CONCAT(CONCAT(p.sku, ': ', p.nombre_producto, ' (', cp.cantidad, ')') SEPARATOR ', ') AS productos_carrito
+    SELECT v.id, u.nombre AS vendedor, v.costo_total, v.fecha_venta, v.lugar_entrega, v.carrito
     FROM ventas v
     JOIN usuarios u ON v.usuario = u.id
-    JOIN carrito_producto cp ON v.carrito = cp.carrito
-    JOIN productos p ON cp.producto = p.sku
-    WHERE v.id = p_id
+    WHERE v.id = v_id
     GROUP BY v.id;
 END $$
 DELIMITER ;
@@ -811,7 +796,6 @@ BEGIN
 		WHERE 
 			sku = p_sku;
 	ELSE 
-		ROLLBACK;
 		SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'La cantidad no es válida.';
 	END IF;
     
@@ -820,13 +804,13 @@ BEGIN
 END $$
 DELIMITER ;
 
--- SP para modificar la cantidad de productos en carrito_producto
+-- SP para modificar la cantidad de productos en un carrito (carrito_producto)
 -- hay que prevenir desde el front que se ingresen cantidades negativas
 -- ademas, no estoy seguro de que sea la mejor manera de verificar si hay suficiente inventario
 -- una idea es que el producto tenga un boton individual para actualizar su cantidad en el carrito, 
 -- 		en lugar de un boton para actualizar las cantidades de todos los productos del carrito a la vez
 DELIMITER $$
-CREATE PROCEDURE modificar_cantidad__carrito_producto (
+CREATE PROCEDURE modificar_cantidad_producto_carrito (
     IN usuario_id INT,
     IN producto_sku VARCHAR(20),
     IN nueva_cantidad INT
@@ -838,9 +822,9 @@ BEGIN
 
 	START TRANSACTION;
 
-    SELECT carrito_actual INTO carrito_id 
-    FROM usuarios 
-    WHERE id = usuario_id;
+    SELECT id INTO carrito_id 
+    FROM carrito 
+    WHERE usuario = usuario_id;
 
     SELECT cp.cantidad INTO cantidad_actual
     FROM carrito_producto cp
@@ -851,7 +835,6 @@ BEGIN
     WHERE sku = producto_sku;
 
     IF nueva_cantidad > cantidad_inventario THEN
-		ROLLBACK;
         SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'No hay suficiente inventario.';
     ELSE
         IF nueva_cantidad = 0 THEN
@@ -904,20 +887,17 @@ BEGIN
 	START TRANSACTION;
 
 	IF nuevo_distribuidor = usuario_id OR nuevo_promotor = usuario_id THEN
-		ROLLBACK;
 		SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'El usuario no puede ser su propio promotor/distribuidor.';
 	END IF;
 	
     IF nuevo_distribuidor IS NOT NULL THEN
         IF NOT EXISTS (SELECT 1 FROM usuarios WHERE id = nuevo_distribuidor AND rol = 'distribuidor') THEN
-			ROLLBACK;
             SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'El distribuidor especificado no existe.';
         END IF;
     END IF;
 
     IF nuevo_promotor IS NOT NULL THEN
         IF NOT EXISTS (SELECT 1 FROM usuarios WHERE id = nuevo_promotor AND rol = 'promotor') THEN
-			ROLLBACK;
             SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'El promotor especificado no existe.';
         END IF;
     END IF;
@@ -940,7 +920,6 @@ BEGIN
 	START TRANSACTION;
 
     IF NOT EXISTS (SELECT 1 FROM productos WHERE sku = producto_sku) THEN
-		ROLLBACK;
         SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'El producto especificado no existe.';
     ELSE
 		-- elimina el producto de todos los carritos (carrrito_producto)
@@ -957,12 +936,16 @@ DELIMITER ;
 
 -- SP para eliminar un producto de un carrito (carrito_producto)
 DELIMITER $$
-CREATE PROCEDURE eliminar_producto_de_carrito (
-    IN carrito_id INT,
+CREATE PROCEDURE eliminar_producto_carrito (
+    IN usuario_id INT,
     IN producto_sku VARCHAR(20)
 )
 BEGIN
+	DECLARE carrito_id INT;
+
     START TRANSACTION;
+    
+    SELECT id INTO carrito_id FROM carrito WHERE usuario = usuario_id;
     
     DELETE FROM carrito_producto
     WHERE carrito = carrito_id AND producto = producto_sku;
@@ -990,7 +973,6 @@ BEGIN
         DELETE FROM clientes
         WHERE id = c_id;
     ELSE
-		ROLLBACK;
         SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'El cliente no existe.';
     END IF;
     

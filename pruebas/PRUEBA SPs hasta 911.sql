@@ -23,7 +23,7 @@ CALL insertar_usuario('Juan', 'juana@gmail.com', '1289387473', 'distribuidor', 1
 CALL insertar_usuario('Juan', 'juansadasda@gmail.com', '128938747', 'distribuidor', 100, 'plata', NULL, NULL); -- dist se duplica telefono NO se inserta
 
 -- Insertar productos (SKU, nombre, precio, precion sin iva, img, desc, descuento, puntos)
-CALL insertar_producto('ALV001', 'Extracto de Aloe Vera', 150, 120, 'aloe_vera.jpg', 'Extracto natural de Aloe Vera para hidratación profunda.', 0, 50, 5);
+CALL insertar_producto('ALV00232', 'Extracto de Aloe Vera', 150, 120, 'aloe_vera.jpg', 'Extracto natural de Aloe Vera para hidratación profunda.', 0, 50, 5);
 CALL insertar_producto('ACO002', 'Aceite de Coco Orgánico', 180, 150, 'aceite_coco.jpg', 'Aceite virgen de coco orgánico, ideal para cocinar y cuidado de la piel.', 15, 70, 5);
 CALL insertar_producto('MAC003', 'Polvo de Maca', 200, 170, 'maca_polvo.jpg', 'Polvo de maca pura para aumentar energía y vitalidad.', 5, 60, 5);
 CALL insertar_producto('TGV004', 'Té Verde Matcha', 220, 180, 'matcha_tea.jpg', 'Té verde matcha premium, antioxidante y revitalizante.', 0, 40, 5);
@@ -53,6 +53,9 @@ CALL obtener_usuario_parametro('128938845');
 -- Obtener todos los usuarios
 CALL obtener_todos_usuarios();
 
+-- Eliminar un usuario
+CALL eliminar_usuario(100);
+
 -- Insertar clientes (no se puede repetir ni email ni telefono)
 CALL insertar_cliente('Laura Gomez', 'laura.gomez@gmail.com', '999999998', 'CDMX', 'Plantas curativas');
 CALL insertar_cliente('Carlos Perez', 'carlos.perez@gmail.com', '999999876', 'Guadalajara', 'Plantas de alivio para dolor');
@@ -65,7 +68,7 @@ CALL obtener_todos_clientes();
 CALL obtener_cliente_parametro('laura.gomez@gmail.com');
 
 -- Modificar un cliente
-CALL modificar_cliente('1','Laura perez', 'carlos.perez@gmail.com', '999999998', 'CDMX', 'Plantas curativas');
+CALL modificar_cliente(2,'Laura perez', 'carlos.perez@gmail.com', '999999998', 'CDMX', 'Plantas curativas');
 
 -- Eliminar un cliente 
 CALL eliminar_cliente(2);
