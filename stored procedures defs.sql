@@ -1,5 +1,5 @@
 -- SP para insertar usuario con promotor y distribuidor especificos (pueden ser nulos). 
--- Al crear un usuario, se crea un carrito para el usuario y se referencia el carrito a carrito_actual en Usuarios
+-- Al crear un usuario, se crea un carrito para el usuario
 DELIMITER $$
 CREATE PROCEDURE insertar_usuario (
     IN nombre VARCHAR(100), 
@@ -536,8 +536,7 @@ BEGIN
             puntos_total AS puntos,
             nivel AS nivel,
             distribuidor AS distribuidor,
-            promotor AS promotor,
-            carrito_actual AS carrito_actual
+            promotor AS promotor
         FROM
             usuarios
         WHERE
@@ -552,9 +551,8 @@ BEGIN
             puntos_total AS puntos,
             nivel AS nivel,
             distribuidor AS distribuidor,
-            promotor AS promotor,
-            carrito_actual AS carrito_actual
-        FROM
+            promotor AS promotor
+            FROM
             usuarios
         WHERE
             nombre = u_parametro
@@ -577,8 +575,7 @@ BEGIN
         puntos_total AS puntos,
         nivel AS nivel,
         distribuidor AS distribuidor,
-        promotor AS promotor,
-        carrito_actual AS carrito_actual
+        promotor AS promotor
     FROM
         usuarios;
 END $$
@@ -586,7 +583,7 @@ DELIMITER ;
 
 -- SP para obtener el promotor y distribuidor de un usuario
 DELIMITER $$
-CREATE PROCEDURE obtener_promotor_distribuidor_usuario (
+CREATE PROCEDURE obtener_usuario_relaciones (
     IN usuario_id INT
 )
 BEGIN
@@ -818,7 +815,7 @@ CREATE PROCEDURE modificar_cantidad_producto_carrito (
 BEGIN
     DECLARE carrito_id INT;
     DECLARE cantidad_actual INT DEFAULT 0;
-    DECLARE cantidad_inventario INT DEFAULT 0;
+    DECLARE cantidad_inventario_prod INT DEFAULT 0;
 
 	START TRANSACTION;
 
@@ -830,13 +827,15 @@ BEGIN
     FROM carrito_producto cp
     WHERE cp.carrito = carrito_id AND cp.producto = producto_sku;
 
-    SELECT cantidad_inventario INTO cantidad_inventario
+    SELECT cantidad_inventario INTO cantidad_inventario_prod
     FROM productos
     WHERE sku = producto_sku;
 
-    IF nueva_cantidad > cantidad_inventario THEN
+    IF nueva_cantidad > cantidad_inventario_prod THEN
         SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'No hay suficiente inventario.';
-    ELSE
+    ELSEIF nueva_cantidad < 0 THEN
+		SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Cantidad inválida';
+	ELSE
         IF nueva_cantidad = 0 THEN
             DELETE FROM carrito_producto
             WHERE carrito = carrito_id AND producto = producto_sku;
