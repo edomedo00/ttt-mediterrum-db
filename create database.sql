@@ -3,20 +3,23 @@ USE mediterrum;
 
 CREATE TABLE usuarios (
 	id INT AUTO_INCREMENT PRIMARY KEY,
-    nombre VARCHAR(100) NOT NULL, 
+    nombre VARCHAR(60) NOT NULL, 
     email VARCHAR(50) NOT NULL, 
     telefono VARCHAR(15) NOT NULL, 
-    rol ENUM('vendedor', 'promotor', 'distribuidor') NOT NULL, 
+    ciudad VARCHAR(30),
+    estado VARCHAR(25),
+    rol ENUM('promotor', 'vendedor', 'distribuidor', 'administrador') NOT NULL,
     puntos_total INT, 
-    nivel ENUM('oro', 'plata', 'bronce') NOT NULL, 
+    nivel ENUM('N1 Plata', 'N2 Oro', 'N3 Platino', 'N4 Zafiro', 'N5 Esmeralda', 'N6 Diamante'), 
     distribuidor INT, 
-    promotor INT,
+    vendedor INT,
+    contrasena VARCHAR(20),
 	CONSTRAINT u_unique_email UNIQUE (email),               
     CONSTRAINT u_unique_telefono UNIQUE (telefono)
 );
 
 ALTER TABLE usuarios
-ADD CONSTRAINT fk_promotor_de_usuario FOREIGN KEY (promotor) REFERENCES usuarios(id),
+ADD CONSTRAINT fk_vendedor_de_usuario FOREIGN KEY (vendedor) REFERENCES usuarios(id),
 ADD CONSTRAINT fk_distribuidor_de_usuario FOREIGN KEY (distribuidor) REFERENCES usuarios(id);
 
 CREATE TABLE carrito (
@@ -26,13 +29,11 @@ CREATE TABLE carrito (
 );
 
 CREATE TABLE historial (
+	id INT AUTO_INCREMENT PRIMARY KEY,
 	usuario INT NOT NULL, 
-    promocion_a ENUM('vendedor', 'promotor', 'distribuidor') NOT NULL, 
-    promocion_por INT NOT NULL, 
     fecha DATE NOT NULL, 
     descripcion VARCHAR(100),
-    CONSTRAINT fk_usuario_historial FOREIGN KEY (usuario) REFERENCES usuarios(id),
-	CONSTRAINT fk_promocion_por_usuario FOREIGN KEY (promocion_por) REFERENCES usuarios(id)
+    CONSTRAINT fk_usuario_historial FOREIGN KEY (usuario) REFERENCES usuarios(id)
 );
 
 CREATE TABLE productos (
@@ -41,7 +42,7 @@ CREATE TABLE productos (
     costo_total INT NOT NULL, 
     costo_no_iva INT NOT NULL, 
     img VARCHAR(50), 
-    descripcion VARCHAR(100), 
+    descripcion VARCHAR(150), 
     descuento INT, 
     puntos_producto INT,
     cantidad_inventario INT NOT NULL
@@ -70,12 +71,25 @@ CREATE TABLE ventas (
 
 CREATE TABLE clientes (
 	id  INT AUTO_INCREMENT PRIMARY KEY, 
+    usuario INT NOT NULL,
     nombre VARCHAR(50) NOT NULL, 
     email VARCHAR(30) NOT NULL, 
     telefono VARCHAR(15), 
-    locacion VARCHAR(30),
+    ciudad VARCHAR(30),
+    estado VARCHAR(25),
     intereses VARCHAR(50),
    	CONSTRAINT c_unique_email UNIQUE (email),               
-    CONSTRAINT c_unique_telefono UNIQUE (telefono)
+    CONSTRAINT c_unique_telefono UNIQUE (telefono),
+    CONSTRAINT fk_usuario_clientes FOREIGN KEY (usuario) REFERENCES usuarios(id)
 );
+
+CREATE TABLE comisiones (
+    rol ENUM('vendedor', 'distribuidor') NOT NULL,
+    porcentaje DECIMAL(4,1) NOT NULL
+);
+
+INSERT INTO comisiones (rol, porcentaje) VALUES
+('vendedor', 5.0),
+('distribuidor', 10.0);
+
 
