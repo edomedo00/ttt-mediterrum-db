@@ -1,12 +1,10 @@
--- SP para insertar usuario con promotor y distribuidor especificos (pueden ser nulos). 
--- Al crear un usuario, se crea un carrito para el usuario
+-- SP para insertar usuario con promotor y distribuidor especificos (pueden ser nulos). x
 DELIMITER $$
-CREATE PROCEDURE insertar_usuario (
+CREATE PROCEDURE insertar_usuario ( 
     IN p_nombre VARCHAR(100), 
     IN p_email VARCHAR(50), 
     IN p_telefono VARCHAR(15), 
-    IN p_ciudad VARCHAR(30),
-    IN p_estado VARCHAR(25),
+    IN p_locacion VARCHAR(50),
     IN p_rol ENUM('promotor', 'vendedor', 'distribuidor'), 
     IN p_puntos_total INT, 
     IN p_nivel ENUM('N1 Plata', 'N2 Oro', 'N3 Platino', 'N4 Zafiro', 'N5 Esmeralda', 'N6 Diamante'), 
@@ -30,8 +28,7 @@ BEGIN
         nombre, 
         email, 
         telefono, 
-        ciudad,
-        estado,
+        locacion,
         rol, 
         puntos_total, 
         nivel, 
@@ -43,8 +40,7 @@ BEGIN
         p_nombre, 
         p_email, 
         p_telefono, 
-        p_ciudad,
-        p_estado,
+        p_locacion,
         p_rol, 
         p_puntos_total, 
         p_nivel, 
@@ -68,7 +64,7 @@ BEGIN
 END $$
 DELIMITER ;
 
--- SP para eliminar a un usuario del sistema
+-- SP para eliminar a un usuario del sistema x 
 DELIMITER $$
 CREATE PROCEDURE eliminar_usuario (
     IN usuario_id INT
@@ -86,6 +82,10 @@ BEGIN
     UPDATE usuarios
     SET vendedor = NULL
     WHERE vendedor = usuario_id;
+    
+    UPDATE clientes 
+    SET usuario = NULL 
+    WHERE usuario = usuario_id;
 
     SELECT id INTO carrito_id
     FROM carrito
@@ -106,15 +106,14 @@ BEGIN
 END $$
 DELIMITER ;
 
--- SP para modificar los datos personales de un usuario
+-- SP para modificar los datos personales de un usuario x
 DELIMITER $$
 CREATE PROCEDURE modificar_usuario_datos (
     IN usuario_id INT,
     IN nuevo_nombre VARCHAR(100),
     IN nuevo_email VARCHAR(50),
     IN nuevo_telefono VARCHAR(15),
-    IN nueva_ciudad VARCHAR(30),
-    IN nuevo_estado VARCHAR(25)
+    IN nueva_locacion VARCHAR(50)
 )
 BEGIN
 
@@ -124,8 +123,7 @@ BEGIN
     SET nombre = nuevo_nombre,
         email = nuevo_email,
         telefono = nuevo_telefono,
-        ciudad = nueva_ciudad,
-        estado = nuevo_estado
+        locacion = nueva_locacion
     WHERE id = usuario_id;
     
     INSERT INTO historial (usuario, fecha, descripcion) 
@@ -135,9 +133,9 @@ BEGIN
 END $$
 DELIMITER ;
 
--- SP para modificar el rol de un usuario
+-- SP para modificar el rol de un usuario x
 DELIMITER $$
-CREATE PROCEDURE modificar_usuario_rol (
+CREATE PROCEDURE modificar_usuario_rol ( 
     IN usuario_id INT,
     IN nuevo_rol ENUM('vendedor', 'promotor', 'distribuidor')
 )
@@ -170,7 +168,7 @@ BEGIN
 END $$
 DELIMITER ;
 
--- SP para modificar la contraseña de un usuario
+-- SP para modificar la contraseña de un usuario x
 DELIMITER $$
 CREATE PROCEDURE modificar_usuario_contrasena (
 	IN usuario_id INT,
@@ -181,17 +179,13 @@ BEGIN
     
     UPDATE usuarios
     SET contrasena = nueva_contrasena
-    WHERE usuario_id = id;
+    WHERE id = usuario_id;
     
     COMMIT;
 END $$
 DELIMITER ;
 
--- SP para realizar una compra/venta para un usuario
--- Pasos
--- 1. Hacer consulta para extraer precio total del carrito
--- 2. Insertar la venta en la tabla ventas
--- 3. Crear un nuevo carrito y asignarselo al usuario
+-- SP para realizar una compra/venta para un usuario x
 DELIMITER $$
 CREATE PROCEDURE realizar_venta_interna (
     IN usuario_id INT,
@@ -381,7 +375,7 @@ BEGIN
 END $$
 DELIMITER ;
 
--- SP para realizar una venta y regresar los datos de la misma junto con las comisiones generadas
+-- SP para realizar una venta y regresar los datos de la misma junto con las comisiones generadas x
 DELIMITER $$
 CREATE PROCEDURE realizar_venta (
     IN usuario_id INT,
@@ -444,25 +438,24 @@ BEGIN
 END $$
 DELIMITER ;
 
--- SP para establecer los porcentajes de comisiones para los roles
+-- SP para establecer los porcentajes de comisiones para los roles x
 DELIMITER $$ 
 CREATE PROCEDURE modificar_comision (
 	IN p_rol VARCHAR(15),
 	IN p_nueva_comision DECIMAL(4,1)
 )
 BEGIN 
-
-	IF p_rol <> 'distribuidor' OR p_rol <> 'vendedor' THEN
-		SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'El rol no existe en la tabla comisiones.';
-	ELSE 
+	IF p_rol = 'distribuidor' OR p_rol = 'vendedor' THEN
 		UPDATE comisiones 
 		SET porcentaje = p_nueva_comision
 		WHERE rol = p_rol;
+	ELSE 
+   		SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'El rol no existe en la tabla comisiones.';
     END IF;
 END $$
 DELIMITER ;
 
--- SP para obtener la red de un usuario_id, usuarios hacia arriba y hacia abajo 
+-- SP para obtener la red de un usuario_id, usuarios hacia arriba y hacia abajo x
 DELIMITER $$
 CREATE PROCEDURE obtener_usuario_red (IN usuario_id INT)
 BEGIN 
@@ -524,15 +517,14 @@ BEGIN
 END $$
 DELIMITER ;
 
--- SP insertar cliente
+-- SP insertar cliente x
 DELIMITER $$
 CREATE PROCEDURE insertar_cliente (
     IN c_usuario INT,
     IN c_nombre VARCHAR(50),
     IN c_email VARCHAR(30),
     IN c_telefono VARCHAR(15),
-	IN c_ciudad VARCHAR(30),
-    IN c_estado VARCHAR(25),
+	IN c_locacion VARCHAR(50),
     IN c_intereses VARCHAR(30)
 )
 BEGIN
@@ -544,8 +536,8 @@ BEGIN
 		SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'El usuario no existe';
 	ELSE 		
 		START TRANSACTION;
-		INSERT INTO clientes (usuario, nombre, email, telefono, ciudad, estado, intereses)
-		VALUES (c_usuario, c_nombre, c_email, c_telefono, c_ciudad, c_estado, c_intereses);
+		INSERT INTO clientes (usuario, nombre, email, telefono, locacion, intereses)
+		VALUES (c_usuario, c_nombre, c_email, c_telefono, c_locacion, c_intereses);
         
         
         INSERT INTO historial (usuario, fecha, descripcion)
@@ -598,7 +590,7 @@ BEGIN
 END $$
 DELIMITER ;
 
--- SP insertar producto en carrito_producto (usuario_id, producto_SKU)
+-- SP insertar producto en carrito_producto (usuario_id, producto_SKU) x
 DELIMITER $$
 CREATE PROCEDURE insertar_producto_carrito (
     IN usuario_id INT,
@@ -637,7 +629,7 @@ BEGIN
 END $$
 DELIMITER;
 
--- SP para obtener los productos en el carrito de un usuario
+-- SP para obtener los productos en el carrito de un usuario x
 DELIMITER $$
 CREATE PROCEDURE obtener_productos_en_carrito_usuario (
     IN usuario_id INT
@@ -664,7 +656,7 @@ BEGIN
 END $$
 DELIMITER ;
 
--- SP para obtener todos los productos en inventario
+-- SP para obtener todos los productos en inventario x
 DELIMITER $$
 CREATE PROCEDURE obtener_productos_todos()
 BEGIN
@@ -683,7 +675,7 @@ BEGIN
 END $$
 DELIMITER ;
 
--- SP para obtener producto por SKU
+-- SP para obtener producto por SKU x
 DELIMITER $$
 CREATE PROCEDURE obtener_producto (
     IN p_parametro VARCHAR(30)
@@ -706,7 +698,7 @@ BEGIN
 END $$
 DELIMITER ;
 
--- SP para obtener un producto por nombre 
+-- SP para obtener un producto por nombre x 
 DELIMITER $$
 CREATE PROCEDURE obtener_producto_nombre (
     IN p_parametro VARCHAR(30)
@@ -729,7 +721,7 @@ BEGIN
 END $$
 DELIMITER ;
 
--- SP para obtener el inventario de un producto
+-- SP para obtener el inventario de un producto x
 DELIMITER $$
 CREATE PROCEDURE obtener_producto_inventario (
     IN producto_sku VARCHAR(20)
@@ -743,7 +735,7 @@ BEGIN
 END $$
 DELIMITER ;
 
--- SP para obtener un usuario por id
+-- SP para obtener un usuario por id x
 DELIMITER $$
 CREATE PROCEDURE obtener_usuario (
     IN u_id INT
@@ -754,8 +746,7 @@ BEGIN
         nombre AS nombre,
         email AS email,
         telefono AS telefono,
-        ciudad AS ciudad,
-        estado AS estado,
+        locacion AS locacion,
         rol AS rol,
         puntos_total AS puntos,
         nivel AS nivel,
@@ -768,7 +759,7 @@ BEGIN
 END $$
 DELIMITER ;
 
--- SP para obtener un usuario por nombre, email o telefono
+-- SP para obtener un usuario por nombre, email o telefono x
 DELIMITER $$
 CREATE PROCEDURE obtener_usuario_parametro (
     IN u_parametro VARCHAR(100)
@@ -779,8 +770,7 @@ BEGIN
         nombre AS nombre,
         email AS email,
         telefono AS telefono,
-        ciudad AS ciudad,
-        estado AS estado,
+        locacion AS locacion,
         rol AS rol,
         puntos_total AS puntos,
         nivel AS nivel,
@@ -795,7 +785,7 @@ BEGIN
 END $$
 DELIMITER ;
 
--- SP para obtener a todos los usuarios
+-- SP para obtener a todos los usuarios x
 DELIMITER $$
 CREATE PROCEDURE obtener_usuarios_todos()
 BEGIN
@@ -804,8 +794,7 @@ BEGIN
         nombre AS nombre,
         email AS email,
         telefono AS telefono,
-        ciudad AS ciudad,
-        estado AS estado,
+        locacion AS locacion,
         rol AS rol,
         puntos_total AS puntos,
         nivel AS nivel,
@@ -816,7 +805,7 @@ BEGIN
 END $$
 DELIMITER ;
 
--- SP para obtener el vendedor y distribuidor de un usuario
+-- SP para obtener el vendedor y distribuidor de un usuario x
 DELIMITER $$
 CREATE PROCEDURE obtener_usuario_relaciones (
     IN usuario_id INT
@@ -840,7 +829,7 @@ BEGIN
 END $$
 DELIMITER ;
 
--- SP para obtener los puntos de un usuario por trimestre
+-- SP para obtener los puntos de un usuario por trimestre x
 DELIMITER $$ 
 CREATE PROCEDURE obtener_usuario_puntos_trimestre (
 	IN p_usuario_id INT,
@@ -857,7 +846,7 @@ BEGIN
 END $$
 DELIMITER ;
 
--- SP para obtener los puntos de un usuario por año
+-- SP para obtener los puntos de un usuario por año x 
 DELIMITER $$ 
 CREATE PROCEDURE obtener_usuario_puntos_anio (
 	IN p_usuario_id INT,
@@ -873,7 +862,7 @@ BEGIN
 END $$
 DELIMITER ;
 
--- SP para obtener el nombre del distribuidor de un usuario
+-- SP para obtener el nombre del distribuidor de un usuario x
 DELIMITER $$
 CREATE PROCEDURE obtener_usuario_distribuidor (
 	IN usuario_id INT
@@ -883,7 +872,7 @@ BEGIN
 END $$
 DELIMITER ;
 
--- SP para obtener el nombre del vendedor de un usuario
+-- SP para obtener el nombre del vendedor de un usuario x
 DELIMITER $$
 CREATE PROCEDURE obtener_usuario_vendedor (
 	IN usuario_id INT
@@ -893,7 +882,7 @@ BEGIN
 END $$
 DELIMITER ;
 
--- SP para obtener el historial de un usuario
+-- SP para obtener el historial de un usuario x
 DELIMITER $$
 CREATE PROCEDURE obtener_usuario_historial (
 	IN usuario_id INT
@@ -906,7 +895,7 @@ BEGIN
 END $$
 DELIMITER ;
 
--- SP para obtener la lista de distribuidores
+-- SP para obtener la lista de distribuidores x
 DELIMITER $$
 CREATE PROCEDURE obtener_lista_distribuidores ()
 BEGIN 
@@ -914,7 +903,7 @@ BEGIN
 END $$
 DELIMITER ;
 
--- SP para obtener la lista de vendedores
+-- SP para obtener la lista de vendedores x
 DELIMITER $$
 CREATE PROCEDURE obtener_lista_vendedores ()
 BEGIN 
@@ -922,7 +911,7 @@ BEGIN
 END $$
 DELIMITER ; 
 
--- SP para obtener a todos los clientes
+-- SP para obtener a todos los clientes x
 DELIMITER $$
 CREATE PROCEDURE obtener_clientes_todos()
 BEGIN
@@ -932,8 +921,7 @@ BEGIN
         c.nombre AS nombre,
         c.email AS email,
         c.telefono AS telefono,
-        c.ciudad AS ciudad,
-        c.estado AS estado,
+        c.locacion AS locacion,
         c.intereses AS intereses
     FROM
         clientes c
@@ -942,7 +930,7 @@ BEGIN
 END $$
 DELIMITER ;
 
--- SP para obtener cliente por id 
+-- SP para obtener cliente por id  x
 DELIMITER $$
 CREATE PROCEDURE obtener_cliente (
     IN c_id INT
@@ -954,8 +942,7 @@ BEGIN
 		c.nombre AS nombre,
 		c.email AS email,
 		c.telefono AS telefono,
-		c.ciudad AS ciudad,
-		c.estado AS estado,
+		c.locacion AS locacion,
 		c.intereses AS intereses
 	FROM 
 		clientes c
@@ -967,7 +954,7 @@ BEGIN
 END $$
 DELIMITER ;
 
--- SP para obtener un cliente por su nombre, email o telefono
+-- SP para obtener un cliente por su nombre, email o telefono x
 DELIMITER $$
 CREATE PROCEDURE obtener_cliente_parametro (
     IN c_parametro VARCHAR(50)
@@ -979,8 +966,7 @@ BEGIN
         c.nombre AS nombre,
         c.email AS email,
         c.telefono AS telefono,
-        c.ciudad AS ciudad,
-        c.estado AS estado,
+        c.locacion AS locacion,
         c.intereses AS intereses
     FROM
         clientes c 
@@ -993,7 +979,7 @@ BEGIN
 END $$
 DELIMITER ;
 
--- SP para obtener un cliente por su usuario
+-- SP para obtener un cliente por su usuario x
 DELIMITER $$
 CREATE PROCEDURE obtener_cliente_por_usuario (
     IN c_usuario_nombre VARCHAR(50)
@@ -1013,8 +999,7 @@ BEGIN
 			u.nombre AS nombre,
 			c.email AS email,
 			c.telefono AS telefono,
-			c.ciudad AS ciudad,
-            c.estado AS estado,
+			c.locacion AS locacion,
 			c.intereses AS intereses
 		FROM
 			clientes c
@@ -1027,7 +1012,7 @@ BEGIN
 END $$
 DELIMITER ;
 
--- SP para obtener todas las ventas
+-- SP para obtener todas las ventas x 
 DELIMITER $$
 CREATE PROCEDURE obtener_ventas_todas()
 BEGIN
@@ -1035,7 +1020,7 @@ BEGIN
 END$$
 DELIMITER ;
 
--- SP para obtener las ventas de una fecha
+-- SP para obtener las ventas de una fecha x
 DELIMITER $$
 CREATE PROCEDURE obtener_ventas_fecha (
     IN p_fecha DATE
@@ -1049,7 +1034,7 @@ BEGIN
 END $$
 DELIMITER ;
 
--- SP para obtener las ventas de una semana
+-- SP para obtener las ventas de una semana x
 DELIMITER $$
 CREATE PROCEDURE obtener_ventas_semana (
 	IN p_fecha DATE
@@ -1061,11 +1046,12 @@ BEGIN
     WHERE YEAR(v.fecha_venta) = YEAR(p_fecha) 
       AND MONTH(v.fecha_venta) = MONTH(p_fecha)
       AND WEEK(v.fecha_venta) = WEEK(p_fecha)
-    GROUP BY v.id;
+    GROUP BY v.id
+    ORDER BY v.fecha_venta ASC;
 END $$
 DELIMITER ;
 
--- SP para obtener las ventas de un mes
+-- SP para obtener las ventas de un mes x
 DELIMITER $$
 CREATE PROCEDURE obtener_ventas_mes (
 	IN p_fecha DATE
@@ -1076,11 +1062,12 @@ BEGIN
     JOIN usuarios u ON v.usuario = u.id
     WHERE YEAR(v.fecha_venta) = YEAR(p_fecha) 
       AND MONTH(v.fecha_venta) = MONTH(p_fecha)
-    GROUP BY v.id;
+    GROUP BY v.id
+    ORDER BY v.fecha_venta ASC;
 END $$
 DELIMITER ;
 
--- SP para obtener las ventas de un trimestre
+-- SP para obtener las ventas de un trimestre x 
 DELIMITER $$ 
 CREATE PROCEDURE obtener_ventas_trimestre (
     IN p_fecha DATE
@@ -1091,11 +1078,12 @@ BEGIN
     JOIN usuarios u ON v.usuario = u.id
     WHERE YEAR(v.fecha_venta) = YEAR(p_fecha)
       AND QUARTER(v.fecha_venta) = QUARTER(p_fecha)
-    GROUP BY v.id;
+    GROUP BY v.id
+    ORDER BY v.fecha_venta ASC;
 END $$
 DELIMITER ;
 
--- SP para obtener las ventas de un año
+-- SP para obtener las ventas de un año x
 DELIMITER $$
 CREATE PROCEDURE obtener_ventas_anio (
     IN p_fecha DATE
@@ -1105,11 +1093,12 @@ BEGIN
     FROM ventas v
     JOIN usuarios u ON v.usuario = u.id
     WHERE YEAR(v.fecha_venta) = YEAR(p_fecha)
-    GROUP BY v.id;
+    GROUP BY v.id
+    ORDER BY v.fecha_venta ASC;
 END $$
 DELIMITER ;
 
--- SP para obtener las ventas que ha realizado un usuario
+-- SP para obtener las ventas que ha realizado un usuario x
 DELIMITER $$
 CREATE PROCEDURE obtener_ventas_usuario (
     IN p_vendedor_id VARCHAR(100)
@@ -1119,11 +1108,12 @@ BEGIN
     FROM ventas v
     JOIN usuarios u ON v.usuario = u.id
     WHERE v.usuario = p_vendedor_id
-    GROUP BY v.id;
+    GROUP BY v.id
+    ORDER BY v.fecha_venta ASC;
 END $$
 DELIMITER ;
 
--- SP para obtener una venta por ID (venta)
+-- SP para obtener una venta por ID (venta) x
 DELIMITER $$
 CREATE PROCEDURE obtener_venta_id (
     IN v_id INT
@@ -1137,70 +1127,64 @@ BEGIN
 END $$
 DELIMITER ;
 
--- SP para obtener top 100 usuarios de una semana
+-- SP para obtener top 100 usuarios de una semana x
 DELIMITER $$ 
 CREATE PROCEDURE obtener_top100_semana (
-	IN p_fecha DATE
+    IN p_fecha DATE
 )
 BEGIN
-	SELECT u.nombre, SUM(v.puntos_venta) AS total_puntos
+    SELECT u.id, u.nombre, SUM(v.puntos_venta) AS total_puntos
     FROM ventas v
     JOIN usuarios u ON v.usuario = u.id
-    WHERE WEEK(v.fecha_venta) = WEEK(p_fecha)
+    WHERE YEAR(v.fecha_venta) = YEAR(p_fecha) 
+      AND WEEK(v.fecha_venta, 1) = WEEK(p_fecha, 1) -- 1 para que la semana empiece en lunes
     GROUP BY u.id
     ORDER BY total_puntos DESC
     LIMIT 100;
 END $$
 DELIMITER ;
 
--- SP para obtener top 100 usuarios de un mes
+-- SP para obtener top 100 usuarios de un mes x
 DELIMITER $$ 
 CREATE PROCEDURE obtener_top100_mes (
 	IN p_fecha DATE
 )
 BEGIN
-	SELECT u.nombre, SUM(v.puntos_venta) AS total_puntos
+	SELECT u.id, u.nombre, SUM(v.puntos_venta) AS total_puntos
     FROM ventas v
     JOIN usuarios u ON v.usuario = u.id
     WHERE MONTH(v.fecha_venta) = MONTH(p_fecha)
+		AND YEAR(v.fecha_venta) = YEAR(p_fecha)
     GROUP BY u.id
     ORDER BY total_puntos DESC
     LIMIT 100;
 END $$
 DELIMITER ;
 
--- SP para obtener top 100 usuarios de un trimestre
+-- SP para obtener top 100 usuarios de un trimestre x
 DELIMITER $$ 
 CREATE PROCEDURE obtener_top100_trimestre (
-	IN p_fecha DATE
+    IN p_fecha DATE
 )
 BEGIN
-    DECLARE trimestre INT;
-    SET trimestre = QUARTER(p_fecha);
-
-	SELECT u.nombre, SUM(v.puntos_venta) AS total_puntos
+    SELECT u.id, u.nombre, SUM(v.puntos_venta) AS total_puntos
     FROM ventas v
     JOIN usuarios u ON v.usuario = u.id
-    WHERE 
-		CASE 
-            WHEN trimestre = 1 THEN MONTH(v.fecha_venta) BETWEEN 1 AND 3
-            WHEN trimestre = 2 THEN MONTH(v.fecha_venta) BETWEEN 4 AND 6
-            WHEN trimestre = 3 THEN MONTH(v.fecha_venta) BETWEEN 7 AND 9
-            WHEN trimestre = 4 THEN MONTH(v.fecha_venta) BETWEEN 10 AND 12
-        END
+    WHERE QUARTER(v.fecha_venta) = QUARTER(p_fecha)
+      AND YEAR(v.fecha_venta) = YEAR(p_fecha)
     GROUP BY u.id
     ORDER BY total_puntos DESC
     LIMIT 100;
 END $$
 DELIMITER ;
 
--- SP para obtener top 100 usuarios de un año
+-- SP para obtener top 100 usuarios de un año x
 DELIMITER $$ 
 CREATE PROCEDURE obtener_top100_anio (
 	IN p_fecha DATE
 )
 BEGIN
-	SELECT u.nombre, SUM(v.puntos_venta) AS total_puntos
+	SELECT u.id, u.nombre, SUM(v.puntos_venta) AS total_puntos
     FROM ventas v
     JOIN usuarios u ON v.usuario = u.id
     WHERE YEAR(v.fecha_venta) = YEAR(p_fecha)
@@ -1210,7 +1194,7 @@ BEGIN
 END $$
 DELIMITER ;
 
--- SP para obtener reporte trimestral 	
+-- SP para obtener reporte trimestral x
 DELIMITER $$
 CREATE PROCEDURE obtener_reporte_trimestral (
 	IN p_fecha DATE
@@ -1235,7 +1219,7 @@ BEGIN
 END $$
 DELIMITER ;
 
--- SP para obtener reporte trimestral por red					PROBAR
+-- SP para obtener reporte trimestral por red x
 DELIMITER $$
 CREATE PROCEDURE obtener_red_reporte_trimestral (
     IN p_fecha DATE,
@@ -1253,7 +1237,7 @@ BEGIN
             SUM(v.puntos_venta) AS total_puntos, 
             SUM(ct.cantidad) AS productos_vendidos
         FROM ventas v
-        JOIN usuarios u ON (u.id = v.usuario OR u.distribuidor = usuario_id)
+        JOIN usuarios u ON u.id = v.usuario
         JOIN JSON_TABLE (
             v.carrito,
             '$[*]' COLUMNS (
@@ -1271,7 +1255,7 @@ BEGIN
             SUM(v.puntos_venta) AS total_puntos, 
             SUM(ct.cantidad) AS productos_vendidos
         FROM ventas v
-        JOIN usuarios u ON (u.id = v.usuario OR u.vendedor = usuario_id)
+        JOIN usuarios u ON u.id = v.usuario
         JOIN JSON_TABLE (
             v.carrito,
             '$[*]' COLUMNS (
@@ -1303,7 +1287,7 @@ BEGIN
 END $$
 DELIMITER ;
 
--- SP para obtener reporte mensual por red					PROBAR
+-- SP para obtener reporte mensual por red x
 DELIMITER $$
 CREATE PROCEDURE obtener_red_reporte_mensual (
     IN p_fecha DATE,
@@ -1321,7 +1305,7 @@ BEGIN
             SUM(v.puntos_venta) AS total_puntos, 
             SUM(ct.cantidad) AS productos_vendidos
         FROM ventas v
-        JOIN usuarios u ON (u.id = v.usuario_id OR u.distribuidor = usuario_id)
+        JOIN usuarios u ON u.id = v.usuario
         JOIN JSON_TABLE (
             v.carrito,
             '$[*]' COLUMNS (
@@ -1339,7 +1323,7 @@ BEGIN
             SUM(v.puntos_venta) AS total_puntos, 
             SUM(ct.cantidad) AS productos_vendidos
         FROM ventas v
-        JOIN usuarios u ON (u.id = v.usuario_id OR u.vendedor = usuario_id)
+        JOIN usuarios u ON u.id = v.usuario
         JOIN JSON_TABLE (
             v.carrito,
             '$[*]' COLUMNS (
@@ -1363,7 +1347,7 @@ BEGIN
                 cantidad INT PATH '$.cantidad'    
             )
         ) ct
-        WHERE v.usuario_id = usuario_id
+        WHERE v.usuario = usuario_id
             AND MONTH(fecha_venta) = MONTH(p_fecha)
             AND YEAR(fecha_venta) = YEAR(p_fecha);
     END IF;
@@ -1371,7 +1355,7 @@ BEGIN
 END $$
 DELIMITER ;
 
--- SP para obtener reporte anual por red					PROBAR
+-- SP para obtener reporte anual por red x
 DELIMITER $$
 CREATE PROCEDURE obtener_red_reporte_anual (
     IN p_fecha DATE,
@@ -1389,7 +1373,7 @@ BEGIN
             SUM(v.puntos_venta) AS total_puntos, 
             SUM(ct.cantidad) AS productos_vendidos
         FROM ventas v
-        JOIN usuarios u ON (u.id = v.usuario_id OR u.distribuidor = usuario_id)
+        JOIN usuarios u ON u.id = v.usuario
         JOIN JSON_TABLE (
             v.carrito,
             '$[*]' COLUMNS (
@@ -1406,7 +1390,7 @@ BEGIN
             SUM(v.puntos_venta) AS total_puntos, 
             SUM(ct.cantidad) AS productos_vendidos
         FROM ventas v
-        JOIN usuarios u ON (u.id = v.usuario_id OR u.vendedor = usuario_id)
+        JOIN usuarios u ON u.id = v.usuario
         JOIN JSON_TABLE (
             v.carrito,
             '$[*]' COLUMNS (
@@ -1429,14 +1413,14 @@ BEGIN
                 cantidad INT PATH '$.cantidad'    
             )
         ) ct
-        WHERE v.usuario_id = usuario_id
+        WHERE v.usuario = usuario_id
             AND YEAR(fecha_venta) = YEAR(p_fecha);
     END IF;
 
 END $$
 DELIMITER ;
 
--- SP para modificar los datos de un producto
+-- SP para modificar los datos de un producto x
 DELIMITER $$
 CREATE PROCEDURE modificar_producto (
     IN p_sku VARCHAR(20),
@@ -1468,7 +1452,7 @@ BEGIN
 END $$
 DELIMITER ;
 
--- SP para modificar exclusivamente el inventario de un producto
+-- SP para modificar exclusivamente el inventario de un producto x 
 DELIMITER $$
 CREATE PROCEDURE modificar_producto_inventario (
     IN p_sku VARCHAR(20),
@@ -1492,11 +1476,7 @@ BEGIN
 END $$
 DELIMITER ;
 
--- SP para modificar la cantidad de productos en un carrito (carrito_producto)
--- hay que prevenir desde el front que se ingresen cantidades negativas
--- ademas, no estoy seguro de que sea la mejor manera de verificar si hay suficiente inventario
--- una idea es que el producto tenga un boton individual para actualizar su cantidad en el carrito, 
--- 		en lugar de un boton para actualizar las cantidades de todos los productos del carrito a la vez
+-- SP para modificar la cantidad de productos en un carrito (carrito_producto) x
 DELIMITER $$
 CREATE PROCEDURE modificar_cantidad_producto_carrito (
     IN usuario_id INT,
@@ -1540,70 +1520,89 @@ BEGIN
 END$$
 DELIMITER ;
 
--- SP para modificar la informacion de un cliente
+-- SP para modificar la informacion de un cliente x
 DELIMITER $$
 CREATE PROCEDURE modificar_cliente (
     IN c_id INT,
     IN c_nombre VARCHAR(50),
     IN c_email VARCHAR(30),
     IN c_telefono VARCHAR(15),
-    IN c_ciudad VARCHAR(30),
-    IN c_estado VARCHAR(25),
+    IN c_locacion VARCHAR(50),
     IN c_intereses VARCHAR(30)
 )
 BEGIN
-	START TRANSACTION;
+    DECLARE cliente_exists INT;
 
-    UPDATE clientes
-    SET 
-        nombre = c_nombre,
-        email = c_email,
-        telefono = c_telefono,
-		ciudad = c_ciudad,
-        estado = c_estado,
-        intereses = c_intereses
+    SELECT COUNT(*) INTO cliente_exists
+    FROM clientes
     WHERE id = c_id;
-    
-    COMMIT;
+
+    IF cliente_exists = 0 THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'El cliente no existe.';
+    ELSE
+        START TRANSACTION;
+
+        UPDATE clientes
+        SET 
+            nombre = c_nombre,
+            email = c_email,
+            telefono = c_telefono,
+            locacion = c_locacion,
+            intereses = c_intereses
+        WHERE id = c_id;
+        
+        COMMIT;
+    END IF;
 END$$
 DELIMITER ;
 
--- SP para modificar el usuario de un cliente 			MOSTRAR ESTO EN HISTORIAL
+-- SP para modificar el usuario de un cliente x
 DELIMITER $$
 CREATE PROCEDURE modificar_cliente_usuario (
-    IN c_id INT,
+    IN c_id INT,	
     IN c_usuario INT
 )
 BEGIN
+	DECLARE cliente_nombre VARCHAR(60);
+	DECLARE usuario_actual INT;
+
 	START TRANSACTION;
 
-    UPDATE clientes
-    SET 
-        usuario = c_usuario
-    WHERE id = c_id;
+	SELECT nombre, usuario INTO cliente_nombre, usuario_actual FROM clientes WHERE id = c_id; 
+
+	IF usuario_actual = c_usuario THEN
+        ROLLBACK;
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'El cliente ya está asignado a este usuario.';
+    ELSE
+        UPDATE clientes
+        SET 
+            usuario = c_usuario
+        WHERE id = c_id;
+
+        INSERT INTO historial (usuario, fecha, descripcion) 
+        VALUES (usuario_actual, CURDATE(), CONCAT('El cliente ', cliente_nombre, ' fue desasignado del usuario.'));
+
+        INSERT INTO historial (usuario, fecha, descripcion) 
+        VALUES (c_usuario, CURDATE(), CONCAT('El cliente ', cliente_nombre, ' fue asignado al usuario.'));
+    END IF;
     
     COMMIT;
 END$$
 DELIMITER ;
 
--- SP para modificar distribuidor, vendedor
+-- SP para modificar el vendedor de un usuario x
 DELIMITER $$
-CREATE PROCEDURE modificar_usuario_relaciones (
+CREATE PROCEDURE modificar_usuario_vendedor (
     IN usuario_id INT,
-    IN nuevo_distribuidor INT,
     IN nuevo_vendedor INT
-    )
+)
 BEGIN
-	START TRANSACTION;
+    DECLARE vend_nombre VARCHAR(60);
+    
+    START TRANSACTION;
 
-	IF nuevo_distribuidor = usuario_id OR nuevo_vendedor = usuario_id THEN
-		SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'El usuario no puede ser su propio vendedor/distribuidor.';
-	END IF;
-	
-    IF nuevo_distribuidor IS NOT NULL THEN
-        IF NOT EXISTS (SELECT 1 FROM usuarios WHERE id = nuevo_distribuidor AND rol = 'distribuidor') THEN
-            SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'El distribuidor especificado no existe.';
-        END IF;
+    IF nuevo_vendedor = usuario_id THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'El usuario no puede ser su propio vendedor.';
     END IF;
 
     IF nuevo_vendedor IS NOT NULL THEN
@@ -1612,16 +1611,69 @@ BEGIN
         END IF;
     END IF;
 
+    IF nuevo_vendedor IS NOT NULL THEN
+        SELECT nombre INTO vend_nombre
+        FROM usuarios
+        WHERE id = nuevo_vendedor;
+    END IF;
+
     UPDATE usuarios
-    SET distribuidor = nuevo_distribuidor,
-        vendedor = nuevo_vendedor
+    SET vendedor = nuevo_vendedor
     WHERE id = usuario_id;
-    
+
+    IF nuevo_vendedor IS NOT NULL THEN
+        INSERT INTO historial (usuario, fecha, descripcion) 
+        VALUES (usuario_id, CURDATE(), CONCAT('El usuario cambió de vendedor a ', vend_nombre, '.'));
+    END IF;
+
     COMMIT;
+
 END$$
 DELIMITER ;
 
--- SP para eliminar un producto 
+-- SP para modificar el distribuidor de un usuario x
+DELIMITER $$
+CREATE PROCEDURE modificar_usuario_distribuidor (
+    IN usuario_id INT,
+    IN nuevo_distribuidor INT
+)
+BEGIN
+    DECLARE dist_nombre VARCHAR(255);
+    
+    START TRANSACTION;
+
+    IF nuevo_distribuidor = usuario_id THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'El usuario no puede ser su propio distribuidor.';
+    END IF;
+
+    IF nuevo_distribuidor IS NOT NULL THEN
+        IF NOT EXISTS (SELECT 1 FROM usuarios WHERE id = nuevo_distribuidor AND rol = 'distribuidor') THEN
+            SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'El distribuidor especificado no existe.';
+        END IF;
+    END IF;
+
+    IF nuevo_distribuidor IS NOT NULL THEN
+        SELECT nombre INTO dist_nombre
+        FROM usuarios
+        WHERE id = nuevo_distribuidor;
+    END IF;
+
+    UPDATE usuarios
+    SET distribuidor = nuevo_distribuidor
+    WHERE id = usuario_id;
+
+    IF nuevo_distribuidor IS NOT NULL THEN
+        INSERT INTO historial (usuario, fecha, descripcion) 
+        VALUES (usuario_id, CURDATE(), CONCAT('El usuario cambió de distribuidor a ', dist_nombre, '.'));
+    END IF;
+
+    COMMIT;
+
+END$$
+DELIMITER ;
+
+
+-- SP para eliminar un producto x
 DELIMITER $$
 CREATE PROCEDURE eliminar_producto (
     IN producto_sku VARCHAR(20)
@@ -1644,7 +1696,7 @@ BEGIN
 END $$
 DELIMITER ;
 
--- SP para eliminar un producto de un carrito (carrito_producto)
+-- SP para eliminar un producto de un carrito (carrito_producto) x
 DELIMITER $$
 CREATE PROCEDURE eliminar_producto_carrito (
     IN usuario_id INT,
@@ -1664,13 +1716,15 @@ BEGIN
 END $$
 DELIMITER ;
 
--- SP para eliminar un cliente						MOSTRAR EN HISTORIAL
+-- SP para eliminar un cliente x
 DELIMITER $$
 CREATE PROCEDURE eliminar_cliente (
     IN c_id INT
 )
 BEGIN
     DECLARE cliente_exists INT;
+    DECLARE usuario_cliente INT;
+  	DECLARE cliente_nombre VARCHAR(60);
 
 	START TRANSACTION;
 
@@ -1680,6 +1734,12 @@ BEGIN
     WHERE id = c_id;
 
     IF cliente_exists > 0 THEN
+    
+        SELECT usuario, nombre INTO usuario_cliente, cliente_nombre FROM clientes WHERE id = c_id;
+        
+        INSERT INTO historial (usuario, fecha, descripcion) 
+		VALUES (usuario_cliente, CURDATE(), CONCAT('El cliente ', cliente_nombre, ' fue eliminado.'));
+    
         DELETE FROM clientes
         WHERE id = c_id;
     ELSE
