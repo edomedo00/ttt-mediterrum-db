@@ -9,9 +9,9 @@
 --     └── Ana D (Vendedor)
 
 -- Insertar usuarios de acuerdo al esquema anterior
--- Argumentos (nombre, email, telefono, ciudad, estado, rol, puntos_total, nivel, distribuidor_id, promotor_id, contrasena) 
+-- Argumentos (nombre, email, telefono, ciudad, estado, rol, puntos_total, nivel, distribuidor_id, promotor_id, contrasena, creador_id) 
 -- [distribuidor_id y promotor_id pueden ser nulos]
-CALL insertar_usuario('Juan A', 'juana@gmail.com', '128938747', 'Monterrey', 'distribuidor', 100, 'N2 Oro', NULL, NULL, 'password123', NULL); -- dist
+CALL insertar_usuario('Juan A', 'juana@gmail.com', '128938747', 'Monterrey', 'distribuidor', 1999, 'N2 Oro', NULL, NULL, 'password123', NULL); -- dist
 CALL insertar_usuario('Hector A', 'hectora@gmail.com', '123456789', 'Guadalajara', 'vendedor', 100, 'N1 Plata', 1, NULL, 'securepass', 1); -- prom
 CALL insertar_usuario('Hector B', 'hectorb@gmail.com', '812937647', 'Guadalajara', 'vendedor', 1999, 'N2 Oro', 1, NULL, 'strongpass', 1); -- prom
 CALL insertar_usuario('Ana A', 'anaa@gmail.com', '92384762', 'Ciudad de México', 'promotor', 999, 'N1 Plata', 1, 2, 'pass2023', 2); -- vend
@@ -19,6 +19,7 @@ CALL insertar_usuario('Ana B', 'anab@gmail.com', '109273897', 'Monterrey', 'prom
 CALL insertar_usuario('Ana C', 'anac@gmail.com', '109254823', 'Guadalajara', 'promotor', 200, 'N1 Plata', 1, 3, 'safepass', 3); -- vend
 CALL insertar_usuario('Ana D', 'anad@gmail.com', '111111111', 'Ciudad de México', 'promotor', 300, 'N6 Diamante', 1, 3, 'mypassword', 3); -- vend
 CALL insertar_usuario('Juan B', 'juanaq@gmail.com', '12228938747', 'Monterrey', 'distribuidor', 100, 'N2 Oro', NULL, NULL, 'password123', NULL); -- dist
+CALL insertar_usuario('Admin', 'admin@gmail.com', '82828282', 'Monterrey', 'administrador', NULL, NULL, NULL, NULL, 'admin123', NULL); -- dist
 
 CALL insertar_usuario('Juan A', 'juana@gmail.com', '128938747', 'Monterrey', 'distribuidor', 100, 'N2 Oro', NULL, NULL, 'password123', NULL); -- dist se duplica email NO se inserta
 CALL insertar_usuario('Juan A', 'juaasdna@gmail.com', '128938747', 'Monterrey', 'distribuidor', 100, 'N2 Oro', NULL, NULL, 'password123', NULL); -- dist se duplica telefono NO se inserta
@@ -57,7 +58,7 @@ CALL obtener_usuario(5);
 
 -- Modificar relaciones (distribuidor, vendedor) de un usuario
 CALL modificar_usuario_vendedor(4, 3);
-CALL modificar_usuario_distribuidor(4, 18);
+CALL modificar_usuario_distribuidor(4, 1);
 
 CALL obtener_usuarios_todos();
 
@@ -84,7 +85,7 @@ CALL eliminar_usuario(14);
 -- Obtener el historial del usuario 5
 CALL obtener_usuario_historial(3);
 CALL obtener_usuario_historial(4);
-CALL obtener_usuario_historial(5);
+CALL obtener_usuario_historial(1);
 CALL obtener_usuario(5);
 
 
@@ -110,13 +111,13 @@ CALL modificar_cliente(1, 'Laura perez', 'carlos.pereza@gmail.com', '9999299238'
 CALL obtener_clientes_todos();
 
 CALL modificar_cliente_usuario(1,5);
-CALL obtener_usuario_historial(6);
+CALL obtener_usuario_historial(1);
 
 -- Eliminar un cliente 
 CALL eliminar_cliente(10);
 CALL obtener_clientes_todos();
 
-CALL obtener_usuario_historial(3);
+CALL obtener_usuario_historial(6);
 
 
 -- PRODUCTOS
@@ -139,7 +140,7 @@ CALL obtener_producto_nombre('Aceite de Coco Orgánico');
 CALL obtener_producto_inventario ('TGV004');
 
 -- Modificar los datos de un producto
-CALL modificar_producto('ALV001', 'Extracto de Aloe Vera editado', 150, 125, 'aloe_edited_vera.jpg', 'Extracto super natural de Aloe Vera para hidratación profunda.', 0, 50);
+CALL modificar_producto_datos('ALV001', 'Extracto de Aloe Vera editado', 150, 125, 'aloe_edited_vera.jpg', 'Extracto super natural de Aloe Vera para hidratación profunda.', 0, 50);
 CALL obtener_producto('ALV001');
 
 -- Modificar el inventario de UN producto
@@ -151,11 +152,11 @@ CALL obtener_producto_inventario ('TGV004');
 
 -- Eliminar un producto
 CALL eliminar_producto('HCH005');
+CALL eliminar_producto('MAC003');
 CALL obtener_productos_todos();
 
 
 -- CARRITO
-
 
 -- Obtener productos y cantidad en carrito de un usuario
 CALL obtener_productos_en_carrito_usuario(1);
@@ -163,21 +164,21 @@ CALL obtener_productos_en_carrito_usuario(1);
 -- Agregar producto al carrito de un usuario (usuario, sku, cantidad)
 CALL insertar_producto_carrito(1, 'MAC003', 2);
 CALL insertar_producto_carrito(3, 'MAC003', 4);
-CALL insertar_producto_carrito(6, 'MAC003', 6);
+CALL insertar_producto_carrito(6, 'MAC003', 10);
 
 CALL insertar_producto_carrito(3, 'HCH005', 1);
 
-CALL obtener_productos_en_carrito_usuario(1);
+CALL obtener_productos_en_carrito_usuario(3);
 
 CALL insertar_producto_carrito(4, 'MAC003', 2);
 
 CALL insertar_producto_carrito(5, 'MAC003', 2);
 
 -- Modificar cantidad de un producto en carrito de usuario (usuario, sku, nueva cantidad)
-CALL modificar_cantidad_producto_carrito (1, 'MAC003', 7);
+CALL modificar_cantidad_producto_carrito (3, 'MAC003', 0);
 CALL modificar_producto_inventario('MAC003', 10);
 CALL obtener_producto_inventario('MAC003');
-CALL modificar_cantidad_producto_carrito (3, 'MAC003', 4); 
+CALL modificar_cantidad_producto_carrito (6, 'MAC003', 4); 
 CALL obtener_productos_en_carrito_usuario(3);
 
 -- Eliminar producto de carrito de usuario
@@ -235,10 +236,9 @@ CALL obtener_ventas_anio('2024-09-01');
 CALL obtener_lista_vendedores ();
 CALL obtener_lista_distribuidores ();
 
-CALL obtener_top100_semana('2024-09-23');
-CALL obtener_top100_mes('2024-09-20');
-CALL obtener_top100_trimestre('2024-09-20');
-CALL obtener_top100_anio('2024-09-20');
+CALL obtener_topN_semana('2024-09-23', 2);
+CALL obtener_topN_mes('2024-09-20', 3);
+CALL obtener_topN_trimestre('2024-09-20', 2);
 
 CALL obtener_ventas_todas;
 
@@ -248,13 +248,11 @@ CALL obtener_red_reporte_mensual('2024-09-20', 1);
 CALL obtener_red_reporte_mensual('2024-09-20', 3);
 CALL obtener_red_reporte_mensual('2024-09-20', 6);
 
+CALL obtener_red_reporte_semestral('2024-09-20', 1);
+
 CALL obtener_red_reporte_trimestral('2024-09-20', 1);
 CALL obtener_red_reporte_trimestral('2024-09-20', 3);
 CALL obtener_red_reporte_trimestral('2024-09-20', 6);
-
-CALL obtener_red_reporte_anual('2024-09-20', 1);
-CALL obtener_red_reporte_anual('2024-09-20', 3);
-CALL obtener_red_reporte_anual('2024-09-20', 6);
 
 CALL obtener_cliente_por_usuario('Hector B');
 

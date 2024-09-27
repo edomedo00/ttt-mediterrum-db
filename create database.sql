@@ -8,7 +8,7 @@ CREATE TABLE usuarios (
     telefono VARCHAR(15) NOT NULL, 
     locacion VARCHAR(50),
     rol ENUM('promotor', 'vendedor', 'distribuidor', 'administrador') NOT NULL,
-    puntos_total INT, 
+    puntos_total INT,
     nivel ENUM('N1 Plata', 'N2 Oro', 'N3 Platino', 'N4 Zafiro', 'N5 Esmeralda', 'N6 Diamante'), 
     distribuidor INT, 
     vendedor INT,
@@ -40,7 +40,7 @@ CREATE TABLE productos (
     nombre_producto VARCHAR(30) NOT NULL, 
     costo_total INT NOT NULL, 
     costo_no_iva INT NOT NULL, 
-    img VARCHAR(50), 
+    img VARCHAR(100), 
     descripcion VARCHAR(150), 
     descuento INT, 
     puntos_producto INT,
@@ -82,12 +82,18 @@ CREATE TABLE clientes (
 );
 
 CREATE TABLE comisiones (
-    rol ENUM('vendedor', 'distribuidor') NOT NULL,
+    rol ENUM('vendedor', 'distribuidor', 'promotor', 'base', 'eventos', 'premios') NOT NULL,
     porcentaje DECIMAL(4,1) NOT NULL
 );
 
 INSERT INTO comisiones (rol, porcentaje) VALUES
-('vendedor', 5.0),
-('distribuidor', 10.0);
+('base', 50.0),
+('eventos', 5.0),
+('premios', 5.0),
+('promotor', 5.0),
+('vendedor', 15.0),
+('distribuidor', 20.0);
+
+
 
 

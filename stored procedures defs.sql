@@ -5,7 +5,7 @@ CREATE PROCEDURE insertar_usuario (
     IN p_email VARCHAR(50), 
     IN p_telefono VARCHAR(15), 
     IN p_locacion VARCHAR(50),
-    IN p_rol ENUM('promotor', 'vendedor', 'distribuidor'), 
+    IN p_rol ENUM('promotor', 'vendedor', 'distribuidor', 'administrador'), 
     IN p_puntos_total INT, 
     IN p_nivel ENUM('N1 Plata', 'N2 Oro', 'N3 Platino', 'N4 Zafiro', 'N5 Esmeralda', 'N6 Diamante'), 
     IN p_distribuidor_id INT, 
@@ -193,6 +193,10 @@ CREATE PROCEDURE realizar_venta_interna (
     IN lugar_entrega VARCHAR(100),
 	OUT vend_comision DECIMAL(7, 2),
     OUT dist_comision DECIMAL(7, 2),
+    OUT base_comision DECIMAL(7, 2),
+    OUT eventos_comision DECIMAL(7, 2),
+    OUT premios_comision DECIMAL(7, 2),
+    OUT promotor_comision DECIMAL(7, 2),
     OUT venta_id INT
 )
 BEGIN
@@ -208,8 +212,13 @@ BEGIN
     DECLARE finished INT DEFAULT 0;
     DECLARE err_message VARCHAR(100);
     DECLARE carrito_json JSON;
+
     DECLARE comision_vendedor_porcentaje DECIMAL(4, 1);
     DECLARE comision_distribuidor_porcentaje DECIMAL(4, 1);
+    DECLARE comision_base_porcentaje DECIMAL(4, 1);
+    DECLARE comision_eventos_porcentaje DECIMAL(4, 1);
+    DECLARE comision_premios_porcentaje DECIMAL(4, 1);
+    DECLARE comision_promotor_porcentaje DECIMAL(4, 1);
     
     -- cursor para iterar al revisar y actualizar inventario
 	DECLARE cur_inventory CURSOR FOR
@@ -223,6 +232,7 @@ BEGIN
     START TRANSACTION;
 
     SELECT id INTO carrito_compra_id FROM carrito WHERE usuario = usuario_id;
+	SELECT rol INTO rol_usuario FROM usuarios WHERE id = usuario_id;
 
     SELECT SUM(
         cp.cantidad * (p.costo_total - (p.costo_total * IFNULL(p.descuento, 0) * 0.01))
@@ -231,10 +241,14 @@ BEGIN
     JOIN productos p ON cp.producto = p.sku
     WHERE cp.carrito = carrito_compra_id;
 
-    SELECT SUM( cp.cantidad * p.puntos_producto ) INTO puntos_total_venta
-    FROM carrito_producto cp
-    JOIN productos p ON cp.producto = p.sku
-    WHERE cp.carrito = carrito_compra_id;
+	IF rol_usuario = 'distribuidor' THEN
+		SELECT SUM( cp.cantidad * p.puntos_producto ) INTO puntos_total_venta
+		FROM carrito_producto cp
+		JOIN productos p ON cp.producto = p.sku
+		WHERE cp.carrito = carrito_compra_id;
+	ELSE 
+		SET puntos_total_venta = 0;
+	END IF;
 
     IF precio_total > 0 THEN
 
@@ -304,61 +318,62 @@ BEGIN
 		INSERT INTO historial (usuario, fecha, descripcion)
         VALUES (usuario_id, CURDATE(), 'El usuario realizó una compra.');
         
-        -- otorgar comision a quien corresponda
-        SELECT rol INTO rol_usuario FROM usuarios WHERE id = usuario_id;
-        
-        SELECT porcentaje INTO comision_vendedor_porcentaje FROM comisiones WHERE rol = 'vendedor';
+        -- otorgar comision a quien corresponda        
+		SELECT porcentaje INTO comision_vendedor_porcentaje FROM comisiones WHERE rol = 'vendedor';
         SELECT porcentaje INTO comision_distribuidor_porcentaje FROM comisiones WHERE rol = 'distribuidor';
+        SELECT porcentaje INTO comision_base_porcentaje FROM comisiones WHERE rol = 'base';
+        SELECT porcentaje INTO comision_eventos_porcentaje FROM comisiones WHERE rol = 'eventos';
+        SELECT porcentaje INTO comision_premios_porcentaje FROM comisiones WHERE rol = 'premios';
+        SELECT porcentaje INTO comision_promotor_porcentaje FROM comisiones WHERE rol = 'promotor';
+        
+		SET vend_comision = (precio_total * comision_vendedor_porcentaje * 0.01);
+		SET dist_comision = (precio_total * comision_distribuidor_porcentaje * 0.01);
+		SET base_comision = (precio_total * comision_base_porcentaje * 0.01);
+		SET eventos_comision = (precio_total * comision_eventos_porcentaje * 0.01);
+		SET premios_comision = (precio_total * comision_premios_porcentaje * 0.01);
+		SET promotor_comision = (precio_total * comision_promotor_porcentaje * 0.01);
+        
+        -- Solo distribuidores tienen sistema de puntos
+        IF rol_usuario = 'distribuidor' THEN
+        
+			-- prevenir que los usuarios sumen mas de 9999 puntos 
+			UPDATE usuarios
+			SET puntos_total =	CASE
+									WHEN puntos_total + puntos_total_venta > 9999 THEN 9999
+									ELSE puntos_total + puntos_total_venta
+								END
+			WHERE id = usuario_id AND puntos_total < 9999;
+			
+			-- Actualizar nivel de usuario
+			SELECT puntos_total, nivel INTO puntos_total_usuario, nivel_usuario FROM usuarios WHERE id = usuario_id;
 
-        
-        IF rol_usuario = 'promotor' THEN
-			SET vend_comision = (precio_total * comision_vendedor_porcentaje * 0.01);
-            SET dist_comision = (precio_total * comision_distribuidor_porcentaje * 0.01);
-		ELSEIF rol_usuario = 'vendedor' THEN
-            SET dist_comision = (precio_total * comision_distribuidor_porcentaje * 0.01);
-			SET vend_comision = 0;
-		ELSE 
-			SET dist_comision = 0;
-            SET vend_comision = 0;
-		END IF;        
-        
-		-- prevenir que los usuarios sumen mas de 9999 puntos 
-        UPDATE usuarios
-        SET puntos_total =	CASE
-								WHEN puntos_total + puntos_total_venta > 9999 THEN 9999
-								ELSE puntos_total + puntos_total_venta
-							END
-        WHERE id = usuario_id AND puntos_total < 9999;
-        
-        -- Actualizar nivel de usuario
-        SELECT puntos_total, nivel INTO puntos_total_usuario, nivel_usuario FROM usuarios WHERE id = usuario_id;
-
-		IF puntos_total_usuario >= 5001 AND nivel_usuario <> 'N6 Diamante' THEN
-			UPDATE usuarios SET nivel = 'N6 Diamante' WHERE id = usuario_id;
-			INSERT INTO historial (usuario, fecha, descripcion) 
-			VALUES (usuario_id, CURDATE(), 'El usuario subió de nivel a N6 Diamante');
-		ELSEIF puntos_total_usuario >= 4001 AND nivel_usuario NOT IN ('N6 Diamante', 'N5 Esmeralda') THEN
-			UPDATE usuarios SET nivel = 'N5 Esmeralda' WHERE id = usuario_id;
-			INSERT INTO historial (usuario, fecha, descripcion) 
-			VALUES (usuario_id, CURDATE(), 'El usuario subió de nivel a N5 Esmeralda');
-		ELSEIF puntos_total_usuario >= 3001 AND nivel_usuario NOT IN ('N6 Diamante', 'N5 Esmeralda', 'N4 Zafiro') THEN
-			UPDATE usuarios SET nivel = 'N4 Zafiro' WHERE id = usuario_id;
-			INSERT INTO historial (usuario, fecha, descripcion) 
-			VALUES (usuario_id, CURDATE(), 'El usuario subió de nivel a N4 Zafiro');
-		ELSEIF puntos_total_usuario >= 2001 AND nivel_usuario NOT IN ('N6 Diamante', 'N5 Esmeralda', 'N4 Zafiro', 'N3 Platino') THEN
-			UPDATE usuarios SET nivel = 'N3 Platino' WHERE id = usuario_id;
-			INSERT INTO historial (usuario, fecha, descripcion)
-			VALUES (usuario_id, CURDATE(), 'El usuario subió de nivel a N3 Platino');
-		ELSEIF puntos_total_usuario >= 1001 AND nivel_usuario NOT IN ('N6 Diamante', 'N5 Esmeralda', 'N4 Zafiro', 'N3 Platino', 'N2 Oro') THEN
-			UPDATE usuarios SET nivel = 'N2 Oro' WHERE id = usuario_id;
-			INSERT INTO historial (usuario, fecha, descripcion)
-			VALUES (usuario_id, CURDATE(), 'El usuario subió de nivel a N2 Oro');
-		ELSEIF puntos_total_usuario >= 320 AND (nivel_usuario IS NULL OR nivel_usuario NOT IN ('N6 Diamante', 'N5 Esmeralda', 'N4 Zafiro', 'N3 Platino', 'N2 Oro', 'N1 Plata')) THEN
-			UPDATE usuarios SET nivel = 'N1 Plata' WHERE id = usuario_id;
-			INSERT INTO historial (usuario, fecha, descripcion) 
-			VALUES (usuario_id, CURDATE(), 'El usuario subió de nivel a N1 Plata');
+			IF puntos_total_usuario >= 5001 AND nivel_usuario <> 'N6 Diamante' THEN
+				UPDATE usuarios SET nivel = 'N6 Diamante' WHERE id = usuario_id;
+				INSERT INTO historial (usuario, fecha, descripcion) 
+				VALUES (usuario_id, CURDATE(), 'El usuario subió de nivel a N6 Diamante');
+			ELSEIF puntos_total_usuario >= 4001 AND nivel_usuario NOT IN ('N6 Diamante', 'N5 Esmeralda') THEN
+				UPDATE usuarios SET nivel = 'N5 Esmeralda' WHERE id = usuario_id;
+				INSERT INTO historial (usuario, fecha, descripcion) 
+				VALUES (usuario_id, CURDATE(), 'El usuario subió de nivel a N5 Esmeralda');
+			ELSEIF puntos_total_usuario >= 3001 AND nivel_usuario NOT IN ('N6 Diamante', 'N5 Esmeralda', 'N4 Zafiro') THEN
+				UPDATE usuarios SET nivel = 'N4 Zafiro' WHERE id = usuario_id;
+				INSERT INTO historial (usuario, fecha, descripcion) 
+				VALUES (usuario_id, CURDATE(), 'El usuario subió de nivel a N4 Zafiro');
+			ELSEIF puntos_total_usuario >= 2001 AND nivel_usuario NOT IN ('N6 Diamante', 'N5 Esmeralda', 'N4 Zafiro', 'N3 Platino') THEN
+				UPDATE usuarios SET nivel = 'N3 Platino' WHERE id = usuario_id;
+				INSERT INTO historial (usuario, fecha, descripcion)
+				VALUES (usuario_id, CURDATE(), 'El usuario subió de nivel a N3 Platino');
+			ELSEIF puntos_total_usuario >= 1001 AND nivel_usuario NOT IN ('N6 Diamante', 'N5 Esmeralda', 'N4 Zafiro', 'N3 Platino', 'N2 Oro') THEN
+				UPDATE usuarios SET nivel = 'N2 Oro' WHERE id = usuario_id;
+				INSERT INTO historial (usuario, fecha, descripcion)
+				VALUES (usuario_id, CURDATE(), 'El usuario subió de nivel a N2 Oro');
+			ELSEIF puntos_total_usuario >= 320 AND (nivel_usuario IS NULL OR nivel_usuario NOT IN ('N6 Diamante', 'N5 Esmeralda', 'N4 Zafiro', 'N3 Platino', 'N2 Oro', 'N1 Plata')) THEN
+				UPDATE usuarios SET nivel = 'N1 Plata' WHERE id = usuario_id;
+				INSERT INTO historial (usuario, fecha, descripcion) 
+				VALUES (usuario_id, CURDATE(), 'El usuario subió de nivel a N1 Plata');
+			END IF;
 		END IF;
-	
+        
 		-- eliminar todos los productos del carrito del usuario
         DELETE FROM carrito_producto WHERE carrito = carrito_compra_id;
 
@@ -385,6 +400,10 @@ CREATE PROCEDURE realizar_venta (
 BEGIN
     DECLARE vend_comision DECIMAL(7, 2);
     DECLARE dist_comision DECIMAL(7, 2);
+    DECLARE base_comision DECIMAL(7, 2);
+    DECLARE eventos_comision DECIMAL(7, 2);
+    DECLARE premios_comision DECIMAL(7, 2);
+    DECLARE promotor_comision DECIMAL(7, 2);
     DECLARE venta_id INT;
 
 	-- realizar venta y obtener las comisiones
@@ -394,11 +413,15 @@ BEGIN
         lugar_entrega,
         vend_comision,
         dist_comision,
+        base_comision,
+        eventos_comision,
+        premios_comision,
+        promotor_comision,
         venta_id
     );
 
 	-- tabla temporal para arrojar los resultados de al venta y las comisiones
-    DROP TEMPORARY TABLE IF EXISTS temp_ventas_comisiones;
+	DROP TEMPORARY TABLE IF EXISTS temp_ventas_comisiones;
     CREATE TEMPORARY TABLE IF NOT EXISTS temp_ventas_comisiones (
         id INT,
         usuario INT,
@@ -411,10 +434,14 @@ BEGIN
         vendedor_de_usuario VARCHAR(50),
         comision_vendedor DECIMAL(7, 2),
         distribuidor_de_usuario VARCHAR(50),
-        comision_distribuidor DECIMAL(7, 2)
+        comision_distribuidor DECIMAL(7, 2),
+        comision_base DECIMAL(7, 2),
+        comision_eventos DECIMAL(7, 2),
+        comision_premios DECIMAL(7, 2),
+        comision_promotor DECIMAL(7, 2)
     );
 
-    INSERT INTO temp_ventas_comisiones
+	INSERT INTO temp_ventas_comisiones
     SELECT 
         v.id,
         v.usuario,
@@ -427,7 +454,11 @@ BEGIN
         u.vendedor AS vendedor_de_usuario,
         vend_comision AS comision_vendedor,
         u.distribuidor AS distribuidor_de_usuario,
-        dist_comision AS comision_distribuidor
+        dist_comision AS comision_distribuidor,
+        base_comision,
+        eventos_comision,
+        premios_comision,
+        promotor_comision
     FROM ventas v
     JOIN usuarios u ON v.usuario = u.id
     WHERE v.id = venta_id;
@@ -441,19 +472,38 @@ DELIMITER ;
 -- SP para establecer los porcentajes de comisiones para los roles x
 DELIMITER $$ 
 CREATE PROCEDURE modificar_comision (
-	IN p_rol VARCHAR(15),
-	IN p_nueva_comision DECIMAL(4,1)
+    IN p_rol VARCHAR(15),
+    IN p_nueva_comision DECIMAL(4,1)
 )
 BEGIN 
-	IF p_rol = 'distribuidor' OR p_rol = 'vendedor' THEN
-		UPDATE comisiones 
-		SET porcentaje = p_nueva_comision
-		WHERE rol = p_rol;
-	ELSE 
-   		SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'El rol no existe en la tabla comisiones.';
+    DECLARE v_exists INT;
+
+    SELECT COUNT(*)
+    INTO v_exists
+    FROM comisiones 
+    WHERE rol = p_rol;
+
+    IF v_exists > 0 THEN
+        UPDATE comisiones 
+        SET porcentaje = p_nueva_comision
+        WHERE rol = p_rol;
+    ELSE 
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'El rol no existe en la tabla comisiones.';
     END IF;
 END $$
 DELIMITER ;
+
+-- SP para reiniciar el conteo de puntos (call cada trimestre)
+DELIMITER $$ 
+CREATE PROCEDURE reset_usuarios_puntos_nivel()
+BEGIN
+    UPDATE usuarios
+    SET puntos_total = 0,
+        nivel = NULL
+	WHERE rol = 'distribuidor';
+END $$ 
+DELIMITER ;
+
 
 -- SP para obtener la red de un usuario_id, usuarios hacia arriba y hacia abajo x
 DELIMITER $$
@@ -1129,8 +1179,9 @@ DELIMITER ;
 
 -- SP para obtener top 100 usuarios de una semana x
 DELIMITER $$ 
-CREATE PROCEDURE obtener_top100_semana (
-    IN p_fecha DATE
+CREATE PROCEDURE obtener_topN_semana (
+    IN p_fecha DATE,
+    IN top_n INT
 )
 BEGIN
     SELECT u.id, u.nombre, SUM(v.puntos_venta) AS total_puntos
@@ -1138,16 +1189,18 @@ BEGIN
     JOIN usuarios u ON v.usuario = u.id
     WHERE YEAR(v.fecha_venta) = YEAR(p_fecha) 
       AND WEEK(v.fecha_venta, 1) = WEEK(p_fecha, 1) -- 1 para que la semana empiece en lunes
+      AND u.puntos_total > 0
     GROUP BY u.id
     ORDER BY total_puntos DESC
-    LIMIT 100;
+    LIMIT top_n;
 END $$
 DELIMITER ;
 
 -- SP para obtener top 100 usuarios de un mes x
 DELIMITER $$ 
-CREATE PROCEDURE obtener_top100_mes (
-	IN p_fecha DATE
+CREATE PROCEDURE obtener_topN_mes (
+	IN p_fecha DATE,
+    IN top_n INT
 )
 BEGIN
 	SELECT u.id, u.nombre, SUM(v.puntos_venta) AS total_puntos
@@ -1155,16 +1208,18 @@ BEGIN
     JOIN usuarios u ON v.usuario = u.id
     WHERE MONTH(v.fecha_venta) = MONTH(p_fecha)
 		AND YEAR(v.fecha_venta) = YEAR(p_fecha)
+        AND u.puntos_total > 0
     GROUP BY u.id
     ORDER BY total_puntos DESC
-    LIMIT 100;
+    LIMIT top_n;
 END $$
 DELIMITER ;
 
 -- SP para obtener top 100 usuarios de un trimestre x
 DELIMITER $$ 
-CREATE PROCEDURE obtener_top100_trimestre (
-    IN p_fecha DATE
+CREATE PROCEDURE obtener_topN_trimestre (
+    IN p_fecha DATE,
+    IN top_n INT
 )
 BEGIN
     SELECT u.id, u.nombre, SUM(v.puntos_venta) AS total_puntos
@@ -1172,25 +1227,10 @@ BEGIN
     JOIN usuarios u ON v.usuario = u.id
     WHERE QUARTER(v.fecha_venta) = QUARTER(p_fecha)
       AND YEAR(v.fecha_venta) = YEAR(p_fecha)
+      AND u.puntos_total > 0
     GROUP BY u.id
     ORDER BY total_puntos DESC
-    LIMIT 100;
-END $$
-DELIMITER ;
-
--- SP para obtener top 100 usuarios de un año x
-DELIMITER $$ 
-CREATE PROCEDURE obtener_top100_anio (
-	IN p_fecha DATE
-)
-BEGIN
-	SELECT u.id, u.nombre, SUM(v.puntos_venta) AS total_puntos
-    FROM ventas v
-    JOIN usuarios u ON v.usuario = u.id
-    WHERE YEAR(v.fecha_venta) = YEAR(p_fecha)
-    GROUP BY u.id
-    ORDER BY total_puntos DESC
-    LIMIT 100;
+    LIMIT top_n;
 END $$
 DELIMITER ;
 
@@ -1300,7 +1340,7 @@ BEGIN
 
     IF rol_usuario = 'distribuidor' THEN
         SELECT
-            QUARTER(p_fecha) AS trimestre,
+            MONTH(p_fecha) AS mes,
             SUM(v.costo_total) AS ingreso_total, 
             SUM(v.puntos_venta) AS total_puntos, 
             SUM(ct.cantidad) AS productos_vendidos
@@ -1318,7 +1358,7 @@ BEGIN
     
     ELSEIF rol_usuario = 'vendedor' THEN
         SELECT
-            QUARTER(p_fecha) AS trimestre,
+            MONTH(p_fecha) AS mes,
             SUM(v.costo_total) AS ingreso_total, 
             SUM(v.puntos_venta) AS total_puntos, 
             SUM(ct.cantidad) AS productos_vendidos
@@ -1336,7 +1376,7 @@ BEGIN
 
     ELSEIF rol_usuario = 'promotor' THEN
         SELECT
-            QUARTER(p_fecha) AS trimestre,
+            MONTH(p_fecha) AS mes,
             SUM(v.costo_total) AS ingreso_total, 
             SUM(v.puntos_venta) AS total_puntos, 
             SUM(ct.cantidad) AS productos_vendidos
@@ -1355,9 +1395,9 @@ BEGIN
 END $$
 DELIMITER ;
 
--- SP para obtener reporte anual por red x
+-- SP para obtener reporte semestral por red x
 DELIMITER $$
-CREATE PROCEDURE obtener_red_reporte_anual (
+CREATE PROCEDURE obtener_red_reporte_semestral (
     IN p_fecha DATE,
     IN usuario_id INT
 )
@@ -1368,9 +1408,8 @@ BEGIN
 
     IF rol_usuario = 'distribuidor' THEN
         SELECT
-            QUARTER(p_fecha) AS trimestre,
+            MONTH(p_fecha) AS mes,
             SUM(v.costo_total) AS ingreso_total, 
-            SUM(v.puntos_venta) AS total_puntos, 
             SUM(ct.cantidad) AS productos_vendidos
         FROM ventas v
         JOIN usuarios u ON u.id = v.usuario
@@ -1381,13 +1420,13 @@ BEGIN
             )
         ) ct
         WHERE (u.id = usuario_id OR u.distribuidor = usuario_id)
+            AND FLOOR( ( MONTH(fecha_venta)-1) / 6 ) + 1 = FLOOR( ( MONTH(p_fecha)-1) / 6 ) + 1 
             AND YEAR(fecha_venta) = YEAR(p_fecha);
     
     ELSEIF rol_usuario = 'vendedor' THEN
         SELECT
-            QUARTER(p_fecha) AS trimestre,
+            MONTH(p_fecha) AS mes,
             SUM(v.costo_total) AS ingreso_total, 
-            SUM(v.puntos_venta) AS total_puntos, 
             SUM(ct.cantidad) AS productos_vendidos
         FROM ventas v
         JOIN usuarios u ON u.id = v.usuario
@@ -1398,13 +1437,13 @@ BEGIN
             )
         ) ct
         WHERE (u.id = usuario_id OR u.vendedor = usuario_id)
+            AND FLOOR( ( MONTH(fecha_venta)-1) / 6 ) + 1 = FLOOR( ( MONTH(p_fecha)-1) / 6 ) + 1 
             AND YEAR(fecha_venta) = YEAR(p_fecha);
 
     ELSEIF rol_usuario = 'promotor' THEN
         SELECT
-            QUARTER(p_fecha) AS trimestre,
+            MONTH(p_fecha) AS mes,
             SUM(v.costo_total) AS ingreso_total, 
-            SUM(v.puntos_venta) AS total_puntos, 
             SUM(ct.cantidad) AS productos_vendidos
         FROM ventas v
         JOIN JSON_TABLE (
@@ -1414,6 +1453,7 @@ BEGIN
             )
         ) ct
         WHERE v.usuario = usuario_id
+            AND FLOOR( ( MONTH(fecha_venta)-1) / 6 ) + 1 = FLOOR( ( MONTH(p_fecha)-1) / 6 ) + 1 
             AND YEAR(fecha_venta) = YEAR(p_fecha);
     END IF;
 
@@ -1422,7 +1462,7 @@ DELIMITER ;
 
 -- SP para modificar los datos de un producto x
 DELIMITER $$
-CREATE PROCEDURE modificar_producto (
+CREATE PROCEDURE modificar_producto_datos (
     IN p_sku VARCHAR(20),
     IN p_nombre_producto VARCHAR(30),
     IN p_costo_total INT,
