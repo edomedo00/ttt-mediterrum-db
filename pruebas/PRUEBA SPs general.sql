@@ -11,7 +11,7 @@
 -- Insertar usuarios de acuerdo al esquema anterior
 -- Argumentos (nombre, email, telefono, ciudad, estado, rol, puntos_total, nivel, distribuidor_id, promotor_id, contrasena, creador_id) 
 -- [distribuidor_id y promotor_id pueden ser nulos]
-CALL insertar_usuario('Juan A', 'juana@gmail.com', '128938747', 'Monterrey', 'distribuidor', 1999, 'N2 Oro', NULL, NULL, 'password123', NULL); -- dist
+CALL insertar_usuario('Juan A', 'juana@gmail.com', '128938747', 'Monterrey', 'distribuidor', 1999, 'N1 Plata', NULL, NULL, 'password123', NULL); -- dist
 CALL insertar_usuario('Hector A', 'hectora@gmail.com', '123456789', 'Guadalajara', 'vendedor', 100, 'N1 Plata', 1, NULL, 'securepass', 1); -- prom
 CALL insertar_usuario('Hector B', 'hectorb@gmail.com', '812937647', 'Guadalajara', 'vendedor', 1999, 'N2 Oro', 1, NULL, 'strongpass', 1); -- prom
 CALL insertar_usuario('Ana A', 'anaa@gmail.com', '92384762', 'Ciudad de México', 'promotor', 999, 'N1 Plata', 1, 2, 'pass2023', 2); -- vend

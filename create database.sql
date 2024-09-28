@@ -82,7 +82,7 @@ CREATE TABLE clientes (
 );
 
 CREATE TABLE comisiones (
-    rol ENUM('vendedor', 'distribuidor', 'promotor', 'base', 'eventos', 'premios') NOT NULL,
+    rol ENUM('vendedor', 'promotor', 'base', 'eventos', 'premios', 'distribuidor N1', 'distribuidor N2', 'distribuidor N3', 'distribuidor N4', 'distribuidor N5', 'distribuidor DD') NOT NULL,
     porcentaje DECIMAL(4,1) NOT NULL
 );
 
@@ -92,7 +92,13 @@ INSERT INTO comisiones (rol, porcentaje) VALUES
 ('premios', 5.0),
 ('promotor', 5.0),
 ('vendedor', 15.0),
-('distribuidor', 20.0);
+('distribuidor N1', 4.0),
+('distribuidor N2', 3.0),
+('distribuidor N3', 3.0),
+('distribuidor N4', 3.0),
+('distribuidor N5', 3.0),
+('distribuidor DD', 4.0);
+-- comision 'bolsa' se calcula (20 - porcentaje de distribuidor)
 
 
 

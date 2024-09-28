@@ -116,20 +116,46 @@ CREATE PROCEDURE modificar_usuario_datos (
     IN nueva_locacion VARCHAR(50)
 )
 BEGIN
-
-    START TRANSACTION;
-
-    UPDATE usuarios
-    SET nombre = nuevo_nombre,
-        email = nuevo_email,
-        telefono = nuevo_telefono,
-        locacion = nueva_locacion
-    WHERE id = usuario_id;
+DECLARE cambios INT DEFAULT 0;
     
-    INSERT INTO historial (usuario, fecha, descripcion) 
-    VALUES (usuario_id, CURDATE(), 'Se modificaron los datos personales del usuario.');
-
-    COMMIT;
+    START TRANSACTION;
+    
+    IF nuevo_nombre IS NOT NULL THEN
+        UPDATE usuarios 
+        SET nombre = nuevo_nombre
+        WHERE id = usuario_id;
+        SET cambios = cambios + ROW_COUNT();
+    END IF;
+    
+    IF nuevo_email IS NOT NULL THEN
+        UPDATE usuarios 
+        SET email = nuevo_email
+        WHERE id = usuario_id;
+        SET cambios = cambios + ROW_COUNT();
+    END IF;
+    
+    IF nuevo_telefono IS NOT NULL THEN
+        UPDATE usuarios 
+        SET telefono = nuevo_telefono
+        WHERE id = usuario_id;
+        SET cambios = cambios + ROW_COUNT();
+    END IF;
+    
+    IF nueva_locacion IS NOT NULL THEN
+        UPDATE usuarios 
+        SET locacion = nueva_locacion
+        WHERE id = usuario_id;
+        SET cambios = cambios + ROW_COUNT();
+    END IF;
+    
+    IF cambios > 0 THEN
+        INSERT INTO historial (usuario, fecha, descripcion) 
+        VALUES (usuario_id, CURDATE(), 'Se modificaron los datos personales del usuario.');
+        COMMIT;
+    ELSE
+        ROLLBACK;
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = "El usuario no existe."; 
+    END IF;
 END $$
 DELIMITER ;
 
@@ -197,6 +223,7 @@ CREATE PROCEDURE realizar_venta_interna (
     OUT eventos_comision DECIMAL(7, 2),
     OUT premios_comision DECIMAL(7, 2),
     OUT promotor_comision DECIMAL(7, 2),
+    OUT bolsa_comision DECIMAL(7, 2),
     OUT venta_id INT
 )
 BEGIN
@@ -213,12 +240,14 @@ BEGIN
     DECLARE err_message VARCHAR(100);
     DECLARE carrito_json JSON;
 
+	DECLARE distribuidor_nivel VARCHAR(15);
     DECLARE comision_vendedor_porcentaje DECIMAL(4, 1);
     DECLARE comision_distribuidor_porcentaje DECIMAL(4, 1);
     DECLARE comision_base_porcentaje DECIMAL(4, 1);
     DECLARE comision_eventos_porcentaje DECIMAL(4, 1);
     DECLARE comision_premios_porcentaje DECIMAL(4, 1);
     DECLARE comision_promotor_porcentaje DECIMAL(4, 1);
+    DECLARE comision_bolsa_porcentaje DECIMAL(4, 1);
     
     -- cursor para iterar al revisar y actualizar inventario
 	DECLARE cur_inventory CURSOR FOR
@@ -320,22 +349,41 @@ BEGIN
         
         -- otorgar comision a quien corresponda        
 		SELECT porcentaje INTO comision_vendedor_porcentaje FROM comisiones WHERE rol = 'vendedor';
-        SELECT porcentaje INTO comision_distribuidor_porcentaje FROM comisiones WHERE rol = 'distribuidor';
         SELECT porcentaje INTO comision_base_porcentaje FROM comisiones WHERE rol = 'base';
         SELECT porcentaje INTO comision_eventos_porcentaje FROM comisiones WHERE rol = 'eventos';
         SELECT porcentaje INTO comision_premios_porcentaje FROM comisiones WHERE rol = 'premios';
         SELECT porcentaje INTO comision_promotor_porcentaje FROM comisiones WHERE rol = 'promotor';
+                
+		SELECT nivel INTO distribuidor_nivel FROM usuarios WHERE id = (SELECT distribuidor FROM usuarios WHERE id = usuario_id);
+        
+		CASE 
+			WHEN distribuidor_nivel LIKE '%1%' THEN 
+				SELECT porcentaje INTO comision_distribuidor_porcentaje FROM comisiones WHERE rol = 'distribuidor N1';
+			WHEN distribuidor_nivel LIKE '%2%' THEN 
+				SELECT porcentaje INTO comision_distribuidor_porcentaje FROM comisiones WHERE rol = 'distribuidor N2';
+			WHEN distribuidor_nivel LIKE '%3%' THEN 
+				SELECT porcentaje INTO comision_distribuidor_porcentaje FROM comisiones WHERE rol = 'distribuidor N3';
+			WHEN distribuidor_nivel LIKE '%4%' THEN 
+				SELECT porcentaje INTO comision_distribuidor_porcentaje FROM comisiones WHERE rol = 'distribuidor N4';
+			WHEN distribuidor_nivel LIKE '%5%' THEN 
+				SELECT porcentaje INTO comision_distribuidor_porcentaje FROM comisiones WHERE rol = 'distribuidor N5';
+			WHEN distribuidor_nivel LIKE '%DD%' THEN -- NO existe ningun nivel 'DD', nunca entrara en este case
+				SELECT porcentaje INTO comision_distribuidor_porcentaje FROM comisiones WHERE rol = 'distribuidor DD';
+			ELSE
+				SELECT 0 INTO comision_distribuidor_porcentaje;
+		END CASE;
         
 		SET vend_comision = (precio_total * comision_vendedor_porcentaje * 0.01);
-		SET dist_comision = (precio_total * comision_distribuidor_porcentaje * 0.01);
 		SET base_comision = (precio_total * comision_base_porcentaje * 0.01);
 		SET eventos_comision = (precio_total * comision_eventos_porcentaje * 0.01);
 		SET premios_comision = (precio_total * comision_premios_porcentaje * 0.01);
 		SET promotor_comision = (precio_total * comision_promotor_porcentaje * 0.01);
-        
+		
+        SET dist_comision = (precio_total * comision_distribuidor_porcentaje * 0.01);
+		SET bolsa_comision = (precio_total * (20-comision_distribuidor_porcentaje) * 0.01);
+
         -- Solo distribuidores tienen sistema de puntos
         IF rol_usuario = 'distribuidor' THEN
-        
 			-- prevenir que los usuarios sumen mas de 9999 puntos 
 			UPDATE usuarios
 			SET puntos_total =	CASE
@@ -404,7 +452,10 @@ BEGIN
     DECLARE eventos_comision DECIMAL(7, 2);
     DECLARE premios_comision DECIMAL(7, 2);
     DECLARE promotor_comision DECIMAL(7, 2);
+    DECLARE bolsa_comision DECIMAL(7, 2);
     DECLARE venta_id INT;
+   	DECLARE distribuidor_nivel VARCHAR(15);
+
 
 	-- realizar venta y obtener las comisiones
     CALL realizar_venta_interna(
@@ -417,8 +468,11 @@ BEGIN
         eventos_comision,
         premios_comision,
         promotor_comision,
+        bolsa_comision,
         venta_id
     );
+    
+	SELECT nivel INTO distribuidor_nivel FROM usuarios WHERE id = (SELECT distribuidor FROM usuarios WHERE id = usuario_id);
 
 	-- tabla temporal para arrojar los resultados de al venta y las comisiones
 	DROP TEMPORARY TABLE IF EXISTS temp_ventas_comisiones;
@@ -434,11 +488,13 @@ BEGIN
         vendedor_de_usuario VARCHAR(50),
         comision_vendedor DECIMAL(7, 2),
         distribuidor_de_usuario VARCHAR(50),
+        nivel_distribuidor VARCHAR(15),
         comision_distribuidor DECIMAL(7, 2),
+        comision_promotor DECIMAL(7, 2),
+        comision_bolsa DECIMAL(7, 2),
         comision_base DECIMAL(7, 2),
         comision_eventos DECIMAL(7, 2),
-        comision_premios DECIMAL(7, 2),
-        comision_promotor DECIMAL(7, 2)
+        comision_premios DECIMAL(7, 2)
     );
 
 	INSERT INTO temp_ventas_comisiones
@@ -454,11 +510,13 @@ BEGIN
         u.vendedor AS vendedor_de_usuario,
         vend_comision AS comision_vendedor,
         u.distribuidor AS distribuidor_de_usuario,
+		distribuidor_nivel AS nivel_distribuidor,
         dist_comision AS comision_distribuidor,
+        promotor_comision,
+        bolsa_comision,
         base_comision,
         eventos_comision,
-        premios_comision,
-        promotor_comision
+        premios_comision
     FROM ventas v
     JOIN usuarios u ON v.usuario = u.id
     WHERE v.id = venta_id;
@@ -495,7 +553,7 @@ DELIMITER ;
 
 -- SP para reiniciar el conteo de puntos (call cada trimestre)
 DELIMITER $$ 
-CREATE PROCEDURE reset_usuarios_puntos_nivel()
+CREATE PROCEDURE reset_usuarios_puntos_nivel ()
 BEGIN
     UPDATE usuarios
     SET puntos_total = 0,
@@ -507,7 +565,9 @@ DELIMITER ;
 
 -- SP para obtener la red de un usuario_id, usuarios hacia arriba y hacia abajo x
 DELIMITER $$
-CREATE PROCEDURE obtener_usuario_red (IN usuario_id INT)
+CREATE PROCEDURE obtener_usuario_red (
+IN usuario_id INT
+)
 BEGIN 
 	SELECT 
 		d.id AS DistribuidorID,
@@ -1711,7 +1771,6 @@ BEGIN
 
 END$$
 DELIMITER ;
-
 
 -- SP para eliminar un producto x
 DELIMITER $$
